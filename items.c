@@ -24,7 +24,15 @@ static void item_unlink_q(item *it);
  */
 #define ITEM_UPDATE_INTERVAL 60
 
+/*
+ * Maximum number of items per slab we visit during allocation by
+ * expiry or eviction.
+ */
+#define NUM_ALLOC_RETRIES 50
+
+#define SMALLEST_ID 0
 #define LARGEST_ID POWER_LARGEST
+
 typedef struct {
     unsigned int evicted;
     unsigned int evicted_nonzero;
@@ -81,24 +89,11 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
     return sizeof(item) + nkey + *nsuffix + nbytes;
 }
 
-/*@null@*/
-item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
-    uint8_t nsuffix;
-    item *it = NULL;
-    char suffix[40];
-    size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
-    if (settings.use_cas) {
-        ntotal += sizeof(uint64_t);
-    }
-
-    unsigned int id = slabs_clsid(ntotal);
-    if (id == 0)
-        return 0;
+static item *do_item_alloc_by_expiration(int id) {
+    int tries = NUM_ALLOC_RETRIES;
+    item *it = NULL, *search = NULL;
 
     /* do a quick check if we have any expired items in the tail.. */
-    int tries = 50;
-    item *search;
-
     for (search = tails[id];
          tries > 0 && search != NULL;
          tries--, search=search->prev) {
@@ -116,80 +111,144 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             break;
         }
     }
+    return it;
+}
 
-    if (it == NULL && (it = slabs_alloc(ntotal, id)) == NULL) {
-        /*
-        ** Could not find an expired item at the tail, and memory allocation
-        ** failed. Try to evict some items!
-        */
-        tries = 50;
+static item *do_item_alloc_by_eviction(int id, size_t ntotal) {
+    int tries = NUM_ALLOC_RETRIES;
+    item *it = NULL, *search = NULL;
+    /*
+    ** Could not find an expired item at the tail, and memory allocation
+    ** failed. Try to evict some items!
+    */
 
-        /* If requested to not push old items out of cache when memory runs out,
-         * we're out of luck at this point...
-         */
+    /* If requested to not push old items out of cache when memory runs out,
+     * we're out of luck at this point...
+     */
 
-        if (settings.evict_to_free == 0) {
-            itemstats[id].outofmemory++;
-            return NULL;
+    if (settings.evict_to_free == 0) {
+        itemstats[id].outofmemory++;
+        return NULL;
+    }
+
+    /*
+     * try to get one off the right LRU
+     * don't necessariuly unlink the tail because it may be locked: refcount>0
+     * search up from tail an item with refcount==0 and unlink it; give up after
+     * NUM_ALLOC_RETRIES tries.
+     */
+
+    if (tails[id] == 0) {
+        itemstats[id].outofmemory++;
+        return NULL;
+    }
+
+    for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+        if (search->refcount == 0) {
+            if (search->exptime == 0 || search->exptime > current_time) {
+                itemstats[id].evicted++;
+                itemstats[id].evicted_time = current_time - search->time;
+                if (search->exptime != 0)
+                    itemstats[id].evicted_nonzero++;
+                STATS_LOCK();
+                stats.evictions++;
+                STATS_UNLOCK();
+            }
+            do_item_unlink(search);
+            break;
         }
-
-        /*
-         * try to get one off the right LRU
-         * don't necessariuly unlink the tail because it may be locked: refcount>0
-         * search up from tail an item with refcount==0 and unlink it; give up after 50
-         * tries
+    }
+    it = slabs_alloc(ntotal, id);
+    if (it == NULL) {
+        itemstats[id].outofmemory++;
+        /* Last ditch effort. There is a very rare bug which causes
+         * refcount leaks. We've fixed most of them, but it still happens,
+         * and it may happen in the future.
+         * We can reasonably assume no item can stay locked for more than
+         * three hours, so if we find one in the tail which is that old,
+         * free it anyway.
          */
-
-        if (tails[id] == 0) {
-            itemstats[id].outofmemory++;
-            return NULL;
-        }
-
+        tries = NUM_ALLOC_RETRIES;
         for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
-            if (search->refcount == 0) {
-                if (search->exptime == 0 || search->exptime > current_time) {
-                    itemstats[id].evicted++;
-                    itemstats[id].evicted_time = current_time - search->time;
-                    if (search->exptime != 0)
-                        itemstats[id].evicted_nonzero++;
-                    STATS_LOCK();
-                    stats.evictions++;
-                    STATS_UNLOCK();
-                }
+            if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
+                itemstats[id].tailrepairs++;
+                search->refcount = 0;
                 do_item_unlink(search);
                 break;
             }
         }
         it = slabs_alloc(ntotal, id);
-        if (it == 0) {
-            itemstats[id].outofmemory++;
-            /* Last ditch effort. There is a very rare bug which causes
-             * refcount leaks. We've fixed most of them, but it still happens,
-             * and it may happen in the future.
-             * We can reasonably assume no item can stay locked for more than
-             * three hours, so if we find one in the tail which is that old,
-             * free it anyway.
-             */
-            tries = 50;
-            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
-                if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
-                    itemstats[id].tailrepairs++;
-                    search->refcount = 0;
-                    do_item_unlink(search);
-                    break;
-                }
-            }
-            it = slabs_alloc(ntotal, id);
-            if (it == 0) {
-                return NULL;
-            }
-        }
+    }
+    return it;
+}
+
+/*@null@*/
+item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
+    uint8_t nsuffix;
+    item *it = NULL;
+    char suffix[40];
+    size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
+    if (settings.use_cas) {
+        ntotal += sizeof(uint64_t);
     }
 
+    unsigned int id = slabs_clsid(ntotal);
+    if (id == 0) return NULL;
+
+#ifndef USE_CROSS_POOL_ALLOCATION
+    it = slabs_alloc(ntotal, id);
+    if (it == NULL) {
+      it = do_item_alloc_by_expiration(id);
+      if (it == NULL) {
+        it = do_item_alloc_by_eviction(id, ntotal);
+        /* All allocation attempts failed. Bail. */
+        if (it == NULL) return NULL;
+      }
+    }
+#else
+    it = slabs_alloc(ntotal, id);
+    if (it == NULL) {
+      int target_slab;
+      unsigned int loop_count = 0;
+
+      /* RGB */
+      for (target_slab = id; it == NULL && target_slab < LARGEST_ID; target_slab++) {
+        loop_count++;
+        it = do_item_alloc_by_expiration(target_slab);
+      }
+      loop_count = 0;
+      assert(id - 1 >= SMALLEST_ID);
+      assert(id < LARGEST_ID);
+      for (target_slab = (id - 1); it == NULL && target_slab >= SMALLEST_ID; target_slab--) {
+        loop_count++;
+        it = do_item_alloc_by_expiration(target_slab);
+      }
+
+      if (it == NULL) {
+        /* RGB */
+        loop_count = 0;
+        for (target_slab = (id + 1); it == NULL && target_slab < LARGEST_ID; target_slab++) {
+          loop_count++;
+          it = do_item_alloc_by_eviction(target_slab, ntotal);
+        }
+       
+        loop_count = 0;
+        for (target_slab = (id - 1); it == NULL && target_slab >= SMALLEST_ID; target_slab--) {
+          loop_count++;
+          it = do_item_alloc_by_eviction(target_slab, ntotal);
+        }
+
+        /* RGB */
+        if (it == NULL) it = do_item_alloc_by_eviction(id, ntotal);
+
+        /* All allocation attempts failed. Bail. */
+        if (it == NULL) return NULL;
+      }
+    }
+#endif
+
     assert(it->slabs_clsid == 0);
-
     it->slabs_clsid = id;
-
     assert(it != heads[it->slabs_clsid]);
 
     it->next = it->prev = it->h_next = 0;
