@@ -1,0 +1,5 @@
+*.o
+sizes
+cscope.*
+*.gcno
+timedrun
