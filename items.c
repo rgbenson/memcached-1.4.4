@@ -81,23 +81,70 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
     return sizeof(item) + nkey + *nsuffix + nbytes;
 }
 
-/*@null@*/
-item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
-    uint8_t nsuffix;
-    item *it = NULL;
-    char suffix[40];
-    size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
-    if (settings.use_cas) {
-        ntotal += sizeof(uint64_t);
+#ifdef USE_SYSTEM_MALLOC // RGB & WIL JANK
+// RGB & WIL JANK
+static item *do_item_alloc2(int fake_slabid, char *key, const size_t nkey,
+                            const int flags, const rel_time_t exptime,
+                            const int nbytes, const int ntotal) {
+
+    /* In the likely case this allocation will succeed. */
+    item *it = slabs_alloc(ntotal, fake_slabid);
+    if (it != NULL)
+      return it;
+
+    /*
+     * Walk the link list from the tail to try and free enough memory
+     * to satisfy the allocation.
+     */
+    STATS_LOCK();
+    stats.alloc2_attempts++;
+    STATS_UNLOCK();
+    item *search = NULL;
+    int unlinked_bytes = 0;
+    for (search = tails[fake_slabid]; search != NULL; search=search->prev) {
+      if (search->refcount == 0 ||
+          (search->exptime != 0 && search->exptime < current_time)) {
+
+        /* Update the relevant stats. */
+        STATS_LOCK();
+        stats.evictions++;
+        stats.alloc2_loops++;
+        STATS_UNLOCK();
+        itemstats[fake_slabid].evicted++;
+        itemstats[fake_slabid].evicted_time = current_time - search->time;
+        if (search->exptime != 0)
+          itemstats[fake_slabid].evicted_nonzero++;
+
+        /*
+         * Grab the size of the item to be freed, unlink it,
+         * and then proceed with the allocation if we have 
+         * enough room to do so.
+         */
+        unlinked_bytes += ITEM_ntotal(search);
+        do_item_unlink(search);
+        if (unlinked_bytes >= ntotal) {
+          it = slabs_alloc(ntotal, fake_slabid);
+          break;
+        }
+
+      }
     }
 
-    unsigned int id = slabs_clsid(ntotal);
-    if (id == 0)
-        return 0;
+    if (it == NULL)
+      itemstats[fake_slabid].outofmemory++;
 
+    return it;
+}
+
+#else
+
+static item *do_item_alloc_retry(int id, char *key, const size_t nkey, const int flags,
+                                 const rel_time_t exptime, const int nbytes,
+                                 const int ntotal)
+{
     /* do a quick check if we have any expired items in the tail.. */
     int tries = 50;
-    item *search;
+    item *it = NULL, *search = NULL;
 
     for (search = tails[id];
          tries > 0 && search != NULL;
@@ -186,12 +233,41 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         }
     }
 
+    return it;
+}
+#endif
+
+/*@null@*/
+item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
+    uint8_t nsuffix;
+    item *it = NULL;
+    char suffix[40];
+    unsigned int id;
+    size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
+    if (settings.use_cas) {
+        ntotal += sizeof(uint64_t);
+    }
+
+#ifdef USE_SYSTEM_MALLOC // RGB & WIL JANK
+#define ALLOC2_FAKE_SLAB_ID 1
+    id = ALLOC2_FAKE_SLAB_ID;
+    it = do_item_alloc2(id, key, nkey, flags, exptime, nbytes, ntotal);
+#else
+    id = slabs_clsid(ntotal);
+    if (id == 0)
+      return NULL;
+    it = do_item_alloc_retry(id, key, nkey, flags, exptime, nbytes, ntotal);
+#endif
+
+    /* Bail early if all attempts to allocate failed. */
+    if (it == NULL)
+      return NULL;
+
     assert(it->slabs_clsid == 0);
-
     it->slabs_clsid = id;
-
     assert(it != heads[it->slabs_clsid]);
 
+    /* Link the freshly allocated item. */
     it->next = it->prev = it->h_next = 0;
     it->refcount = 1;     /* the caller will have a reference */
     DEBUG_REFCNT(it, '*');

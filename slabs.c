@@ -314,6 +314,10 @@ bool get_stats(const char *stat_type, int nkey, ADD_STAT add_stats, void *c) {
             APPEND_STAT("total_items", "%u", stats.total_items);
             APPEND_STAT("evictions", "%llu",
                         (unsigned long long)stats.evictions);
+            APPEND_STAT("alloc2_attempts", "%llu",
+                        (unsigned long long)stats.alloc2_attempts);
+            APPEND_STAT("alloc2_loops", "%llu",
+                        (unsigned long long)stats.alloc2_loops);
         } else if (nz_strcmp(nkey, stat_type, "items") == 0) {
             item_stats(add_stats, c);
         } else if (nz_strcmp(nkey, stat_type, "slabs") == 0) {
