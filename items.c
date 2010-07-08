@@ -31,6 +31,8 @@ typedef struct {
     rel_time_t evicted_time;
     unsigned int outofmemory;
     unsigned int tailrepairs;
+    unsigned int expired;
+    unsigned int expired_stolen;
 } itemstats_t;
 
 static item *heads[LARGEST_ID];
@@ -81,6 +83,94 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
     return sizeof(item) + nkey + *nsuffix + nbytes;
 }
 
+#define NUM_ATTEMPTS_EXPIRE_ITEM 50
+
+static size_t do_item_expire(unsigned int id, item **stolen_item) {
+    item *search = NULL;
+    size_t item_ntotal = 0;
+    int tries = NUM_ATTEMPTS_EXPIRE_ITEM;
+
+    for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+        if (search->refcount == 0 &&
+            (search->exptime != 0 && search->exptime < current_time)) {
+            if (stolen_item) {
+              *stolen_item = search;
+              /* I don't want to actually free the object, just steal
+               * the item to avoid to grab the slab mutex twice ;-)
+               */
+              (*stolen_item)->refcount = 1;
+              item_ntotal = ITEM_ntotal(*stolen_item);
+              do_item_unlink(*stolen_item);
+              /* Initialize the item block: */
+              (*stolen_item)->slabs_clsid = 0;
+              (*stolen_item)->refcount = 0;
+              itemstats[id].expired_stolen++;
+            } else {
+              item_ntotal = ITEM_ntotal(search);
+              do_item_unlink(search);
+              itemstats[id].expired++;
+            }
+            break;
+        }
+    }
+    return item_ntotal;
+}
+
+static size_t do_item_eviction(unsigned int id) {
+    item *search = NULL;
+    size_t item_ntotal = 0;
+    int tries = NUM_ATTEMPTS_EXPIRE_ITEM;
+
+    /*
+     * try to get one off the right LRU
+     * don't necessariuly unlink the tail because it may be locked: refcount>0
+     * search up from tail an item with refcount==0 and unlink it; give up after 50
+     * tries
+     */
+    for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+        if (search->refcount == 0) {
+            if (search->exptime == 0 || search->exptime > current_time) {
+                itemstats[id].evicted++;
+                itemstats[id].evicted_time = current_time - search->time;
+                if (search->exptime != 0)
+                    itemstats[id].evicted_nonzero++;
+                STATS_LOCK();
+                stats.evictions++;
+                STATS_UNLOCK();
+            }
+            item_ntotal = ITEM_ntotal(search);
+            do_item_unlink(search); // RGB Do we really want to evict in this
+                                    //     outer check instead of just in the inner check?!
+            break;
+        }
+    }
+    return item_ntotal;
+}
+
+static size_t do_item_eviction_tailrepair(unsigned int id) {
+    item *search = NULL;
+    size_t item_ntotal = 0;
+    int tries = NUM_ATTEMPTS_EXPIRE_ITEM;
+
+    /* Last ditch effort. There is a very rare bug which causes
+     * refcount leaks. We've fixed most of them, but it still happens,
+     * and it may happen in the future.
+     * We can reasonably assume no item can stay locked for more than
+     * three hours, so if we find one in the tail which is that old,
+     * free it anyway.
+     */
+    for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+        if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
+            itemstats[id].tailrepairs++;
+            search->refcount = 0;
+            item_ntotal = ITEM_ntotal(search);
+            do_item_unlink(search);
+            break;
+        }
+    }
+    return item_ntotal;
+}
+
 /*@null@*/
 item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
     uint8_t nsuffix;
@@ -96,100 +186,38 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         return 0;
 
     /* do a quick check if we have any expired items in the tail.. */
-    int tries = 50;
-    item *search;
-
-    for (search = tails[id];
-         tries > 0 && search != NULL;
-         tries--, search=search->prev) {
-        if (search->refcount == 0 &&
-            (search->exptime != 0 && search->exptime < current_time)) {
-            it = search;
-            /* I don't want to actually free the object, just steal
-             * the item to avoid to grab the slab mutex twice ;-)
-             */
-            it->refcount = 1;
-            do_item_unlink(it);
-            /* Initialize the item block: */
-            it->slabs_clsid = 0;
-            it->refcount = 0;
-            break;
-        }
-    }
+    do_item_expire(id, &it);
 
     if (it == NULL && (it = slabs_alloc(ntotal, id)) == NULL) {
-        /*
-        ** Could not find an expired item at the tail, and memory allocation
-        ** failed. Try to evict some items!
-        */
-        tries = 50;
-
         /* If requested to not push old items out of cache when memory runs out,
          * we're out of luck at this point...
          */
-
         if (settings.evict_to_free == 0) {
             itemstats[id].outofmemory++;
             return NULL;
         }
 
         /*
-         * try to get one off the right LRU
-         * don't necessariuly unlink the tail because it may be locked: refcount>0
-         * search up from tail an item with refcount==0 and unlink it; give up after 50
-         * tries
-         */
-
-        if (tails[id] == 0) {
-            itemstats[id].outofmemory++;
-            return NULL;
-        }
-
-        for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
-            if (search->refcount == 0) {
-                if (search->exptime == 0 || search->exptime > current_time) {
-                    itemstats[id].evicted++;
-                    itemstats[id].evicted_time = current_time - search->time;
-                    if (search->exptime != 0)
-                        itemstats[id].evicted_nonzero++;
-                    STATS_LOCK();
-                    stats.evictions++;
-                    STATS_UNLOCK();
-                }
-                do_item_unlink(search);
-                break;
-            }
-        }
-        it = slabs_alloc(ntotal, id);
-        if (it == 0) {
-            itemstats[id].outofmemory++;
-            /* Last ditch effort. There is a very rare bug which causes
-             * refcount leaks. We've fixed most of them, but it still happens,
-             * and it may happen in the future.
-             * We can reasonably assume no item can stay locked for more than
-             * three hours, so if we find one in the tail which is that old,
-             * free it anyway.
-             */
-            tries = 50;
-            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
-                if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
-                    itemstats[id].tailrepairs++;
-                    search->refcount = 0;
-                    do_item_unlink(search);
-                    break;
-                }
-            }
+        ** Could not find an expired item at the tail, and memory allocation
+        ** failed. Try to evict some items!
+        */
+        if (do_item_eviction(id) != 0) {
             it = slabs_alloc(ntotal, id);
-            if (it == 0) {
+        }
+
+        if (it == NULL) {
+            if (do_item_eviction_tailrepair(id) != 0)
+                it = slabs_alloc(ntotal, id);
+
+            if (it == NULL) {
+                itemstats[id].outofmemory++;
                 return NULL;
             }
         }
     }
 
     assert(it->slabs_clsid == 0);
-
     it->slabs_clsid = id;
-
     assert(it != heads[it->slabs_clsid]);
 
     it->next = it->prev = it->h_next = 0;
@@ -395,16 +423,20 @@ void do_item_stats(ADD_STAT add_stats, void *c) {
 
             APPEND_NUM_FMT_STAT(fmt, i, "number", "%u", sizes[i]);
             APPEND_NUM_FMT_STAT(fmt, i, "age", "%u", tails[i]->time);
+            APPEND_NUM_FMT_STAT(fmt, i, "expired",
+                                "%u", itemstats[i].expired);
+            APPEND_NUM_FMT_STAT(fmt, i, "expired_stolen",
+                                "%u", itemstats[i].expired_stolen);
             APPEND_NUM_FMT_STAT(fmt, i, "evicted",
                                 "%u", itemstats[i].evicted);
             APPEND_NUM_FMT_STAT(fmt, i, "evicted_nonzero",
                                 "%u", itemstats[i].evicted_nonzero);
             APPEND_NUM_FMT_STAT(fmt, i, "evicted_time",
                                 "%u", itemstats[i].evicted_time);
+            APPEND_NUM_FMT_STAT(fmt, i, "tailrepairs",
+                                "%u", itemstats[i].tailrepairs);
             APPEND_NUM_FMT_STAT(fmt, i, "outofmemory",
                                 "%u", itemstats[i].outofmemory);
-            APPEND_NUM_FMT_STAT(fmt, i, "tailrepairs",
-                                "%u", itemstats[i].tailrepairs);;
         }
     }
 
