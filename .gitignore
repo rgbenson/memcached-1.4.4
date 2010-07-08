@@ -1,0 +1,4 @@
+Makefile
+cscope.*
+*.o
+

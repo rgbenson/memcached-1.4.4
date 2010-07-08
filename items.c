@@ -89,9 +89,10 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
     return sizeof(item) + nkey + *nsuffix + nbytes;
 }
 
-static item *do_item_alloc_by_expiration(int id) {
+static size_t do_item_expire(int id, item **stolen_item) {
+    item *search = NULL;
+    size_t item_size = 0;
     int tries = NUM_ALLOC_RETRIES;
-    item *it = NULL, *search = NULL;
 
     /* do a quick check if we have any expired items in the tail.. */
     for (search = tails[id];
@@ -99,24 +100,31 @@ static item *do_item_alloc_by_expiration(int id) {
          tries--, search=search->prev) {
         if (search->refcount == 0 &&
             (search->exptime != 0 && search->exptime < current_time)) {
-            it = search;
-            /* I don't want to actually free the object, just steal
-             * the item to avoid to grab the slab mutex twice ;-)
-             */
-            it->refcount = 1;
-            do_item_unlink(it);
-            /* Initialize the item block: */
-            it->slabs_clsid = 0;
-            it->refcount = 0;
+            if (stolen_item != NULL) {
+              *stolen_item = search;
+              /* I don't want to actually free the object, just steal
+               * the item to avoid to grab the slab mutex twice ;-)
+               */
+              (*stolen_item)->refcount = 1;
+              do_item_unlink(*stolen_item);
+              /* Initialize the item block: */
+              // RGB Do we have to reset the entire state in this item?
+              (*stolen_item)->slabs_clsid = 0;
+              (*stolen_item)->refcount = 0;
+            } else {
+              do_item_unlink(search);
+            }
+            item_size = ITEM_ntotal(search);
             break;
-        }
+          }
     }
-    return it;
+    return item_size;
 }
 
-static item *do_item_alloc_by_eviction(int id, size_t ntotal) {
+static size_t do_item_evict(size_t ntotal, int id) {
+    item *search = NULL;
+    size_t item_size = 0;
     int tries = NUM_ALLOC_RETRIES;
-    item *it = NULL, *search = NULL;
     /*
     ** Could not find an expired item at the tail, and memory allocation
     ** failed. Try to evict some items!
@@ -128,7 +136,7 @@ static item *do_item_alloc_by_eviction(int id, size_t ntotal) {
 
     if (settings.evict_to_free == 0) {
         itemstats[id].outofmemory++;
-        return NULL;
+        return 0;
     }
 
     /*
@@ -140,7 +148,7 @@ static item *do_item_alloc_by_eviction(int id, size_t ntotal) {
 
     if (tails[id] == 0) {
         itemstats[id].outofmemory++;
-        return NULL;
+        return 0;
     }
 
     for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
@@ -154,33 +162,76 @@ static item *do_item_alloc_by_eviction(int id, size_t ntotal) {
                 stats.evictions++;
                 STATS_UNLOCK();
             }
+            item_size = ITEM_ntotal(search);
             do_item_unlink(search);
             break;
         }
     }
-    it = slabs_alloc(ntotal, id);
-    if (it == NULL) {
-        itemstats[id].outofmemory++;
-        /* Last ditch effort. There is a very rare bug which causes
-         * refcount leaks. We've fixed most of them, but it still happens,
-         * and it may happen in the future.
-         * We can reasonably assume no item can stay locked for more than
-         * three hours, so if we find one in the tail which is that old,
-         * free it anyway.
-         */
-        tries = NUM_ALLOC_RETRIES;
-        for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
-            if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
-                itemstats[id].tailrepairs++;
-                search->refcount = 0;
-                do_item_unlink(search);
-                break;
-            }
-        }
-        it = slabs_alloc(ntotal, id);
-    }
-    return it;
+    return item_size;
 }
+
+static size_t do_item_evict_leaked_items(size_t ntotal, int id) {
+    size_t item_size = 0;
+
+    /* Last ditch effort. There is a very rare bug which causes
+     * refcount leaks. We've fixed most of them, but it still happens,
+     * and it may happen in the future.
+     * We can reasonably assume no item can stay locked for more than
+     * three hours, so if we find one in the tail which is that old,
+     * free it anyway.
+     */
+    itemstats[id].outofmemory++; // RGB Leave here?
+
+    int tries = NUM_ALLOC_RETRIES;
+    item *search = NULL;
+    for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+        if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
+            itemstats[id].tailrepairs++;
+            search->refcount = 0;
+            item_size = ITEM_ntotal(search);
+            do_item_unlink(search);
+            break;
+        }
+    }
+
+    return item_size;
+}
+
+#ifdef USE_ACROSS_POOL_EXPIRE_EVICT
+static size_t do_item_across_pool_expire_evict(size_t ntotal, int id) {
+    int target_slab;
+    int tries = 2; //RGB Make this a constant.
+    unsigned int total_freed_bytes = 0;
+
+    while (total_freed_bytes <= ntotal && tries-- > 0) {
+      unsigned int freed_bytes = 0;
+      /* RGB */
+      for (target_slab = (id + 1); freed_bytes == 0 && target_slab < LARGEST_ID; target_slab++) {
+        freed_bytes = do_item_expire(target_slab, NULL);
+      }
+      for (target_slab = (id - 1); freed_bytes == 0 && target_slab >= SMALLEST_ID; target_slab--) {
+        freed_bytes = do_item_expire(target_slab, NULL);
+      }
+
+      /* RGB */
+      for (target_slab = (id + 1); freed_bytes == 0 && target_slab < LARGEST_ID; target_slab++) {
+        freed_bytes = do_item_evict(target_slab, ntotal);
+      }
+      for (target_slab = (id - 1); freed_bytes == 0 && target_slab >= SMALLEST_ID; target_slab--) {
+        freed_bytes = do_item_evict(target_slab, ntotal);
+      }
+
+      /* RGB */
+      if (freed_bytes == 0) freed_bytes = do_item_evict(id, ntotal);
+      if (freed_bytes == 0) freed_bytes = do_item_evict_leaked_items(id, ntotal);
+
+      /* RGB */
+      total_freed_bytes += freed_bytes;
+    }
+
+    return total_freed_bytes;
+}
+#endif
 
 /*@null@*/
 item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
@@ -195,57 +246,27 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     unsigned int id = slabs_clsid(ntotal);
     if (id == 0) return NULL;
 
-#ifndef USE_CROSS_POOL_ALLOCATION
-    it = slabs_alloc(ntotal, id);
+    do_item_expire(id, &it);
     if (it == NULL) {
-      it = do_item_alloc_by_expiration(id);
+      it = slabs_alloc(ntotal, id);
       if (it == NULL) {
-        it = do_item_alloc_by_eviction(id, ntotal);
-        /* All allocation attempts failed. Bail. */
-        if (it == NULL) return NULL;
-      }
-    }
+#ifndef USE_ACROSS_POOL_EXPIRE_EVICT
+        do_item_evict(ntotal, id);
+        it = slabs_alloc(ntotal, id);
+        if (it == NULL) {
+          do_item_evict_leaked_items(ntotal, id);
+          it = slabs_alloc(ntotal, id);
+        }
 #else
-    it = slabs_alloc(ntotal, id);
-    if (it == NULL) {
-      int target_slab;
-      unsigned int loop_count = 0;
-
-      /* RGB */
-      for (target_slab = id; it == NULL && target_slab < LARGEST_ID; target_slab++) {
-        loop_count++;
-        it = do_item_alloc_by_expiration(target_slab);
-      }
-      loop_count = 0;
-      assert(id - 1 >= SMALLEST_ID);
-      assert(id < LARGEST_ID);
-      for (target_slab = (id - 1); it == NULL && target_slab >= SMALLEST_ID; target_slab--) {
-        loop_count++;
-        it = do_item_alloc_by_expiration(target_slab);
-      }
-
-      if (it == NULL) {
-        /* RGB */
-        loop_count = 0;
-        for (target_slab = (id + 1); it == NULL && target_slab < LARGEST_ID; target_slab++) {
-          loop_count++;
-          it = do_item_alloc_by_eviction(target_slab, ntotal);
+        if (do_item_across_pool_expire_evict(ntotal, id) >= ntotal) {
+          it = slabs_alloc(ntotal, id);
         }
-       
-        loop_count = 0;
-        for (target_slab = (id - 1); it == NULL && target_slab >= SMALLEST_ID; target_slab--) {
-          loop_count++;
-          it = do_item_alloc_by_eviction(target_slab, ntotal);
-        }
-
-        /* RGB */
-        if (it == NULL) it = do_item_alloc_by_eviction(id, ntotal);
-
-        /* All allocation attempts failed. Bail. */
-        if (it == NULL) return NULL;
+#endif
       }
     }
-#endif
+
+    /* All allocation attempts failed. Bail. */
+    if (it == NULL) return NULL;
 
     assert(it->slabs_clsid == 0);
     it->slabs_clsid = id;
