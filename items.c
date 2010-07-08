@@ -33,6 +33,8 @@ typedef struct {
     unsigned int tailrepairs;
     unsigned int expired;
     unsigned int expired_stolen;
+    unsigned int writes;
+    unsigned int reads;
 } itemstats_t;
 
 static item *heads[LARGEST_ID];
@@ -84,6 +86,14 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
 }
 
 #define NUM_ATTEMPTS_EXPIRE_ITEM 50
+
+#define OP_READ 1
+#define OP_WRITE 2
+static void do_item_record_io(unsigned int slab_clsid, short mode) {
+    assert(itemstats[slab_id] != NULL);
+    if (mode & OP_READ) itemstats[slab_id].reads++;
+    if (mode & OP_WRITE) itemstats[slab_id].writes++;
+}
 
 static size_t do_item_expire(unsigned int id, item **stolen_item) {
     item *search = NULL;
@@ -310,6 +320,8 @@ int do_item_link(item *it) {
     it->time = current_time;
     assoc_insert(it);
 
+    do_item_record_io(it->slabs_clsid, OP_WRITE);
+
     STATS_LOCK();
     stats.curr_bytes += ITEM_ntotal(it);
     stats.curr_items += 1;
@@ -328,10 +340,14 @@ void do_item_unlink(item *it) {
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
+
+        do_item_record_io(it->slabs_clsid, OP_WRITE);
+
         STATS_LOCK();
         stats.curr_bytes -= ITEM_ntotal(it);
         stats.curr_items -= 1;
         STATS_UNLOCK();
+
         assoc_delete(ITEM_key(it), it->nkey);
         item_unlink_q(it);
         if (it->refcount == 0) item_free(it);
@@ -339,7 +355,8 @@ void do_item_unlink(item *it) {
 }
 
 void do_item_remove(item *it) {
-    MEMCACHED_ITEM_REMOVE(ITEM_key(it), it->nkey, it->nbytes);
+   do_item_record_io(it->slabs_clsid, OP_WRITE);
+   MEMCACHED_ITEM_REMOVE(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
     if (it->refcount != 0) {
         it->refcount--;
@@ -352,6 +369,7 @@ void do_item_remove(item *it) {
 
 void do_item_update(item *it) {
     MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
+    do_item_record_io(it->slabs_clsid, OP_WRITE);
     if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
         assert((it->it_flags & ITEM_SLABBED) == 0);
 
@@ -364,6 +382,7 @@ void do_item_update(item *it) {
 }
 
 int do_item_replace(item *it, item *new_it) {
+    do_item_record_io(new_it->slabs_clsid, OP_WRITE);
     MEMCACHED_ITEM_REPLACE(ITEM_key(it), it->nkey, it->nbytes,
                            ITEM_key(new_it), new_it->nkey, new_it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
@@ -518,6 +537,7 @@ item *do_item_get(const char *key, const size_t nkey) {
     }
 
     if (it != NULL) {
+        do_item_record_io(it->slabs_clsid, OP_READ);
         it->refcount++;
         DEBUG_REFCNT(it, '+');
     }
@@ -532,6 +552,7 @@ item *do_item_get(const char *key, const size_t nkey) {
 item *do_item_get_nocheck(const char *key, const size_t nkey) {
     item *it = assoc_find(key, nkey);
     if (it) {
+        do_item_record_io(it->slabs_clsid, OP_READ);
         it->refcount++;
         DEBUG_REFCNT(it, '+');
     }
