@@ -52,7 +52,7 @@ subdir = .
 DIST_COMMON = README $(am__configure_deps) $(pkginclude_HEADERS) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
 	$(srcdir)/config.h.in $(top_srcdir)/configure AUTHORS COPYING \
-	ChangeLog NEWS compile config.guess config.sub depcomp \
+	ChangeLog INSTALL NEWS compile config.guess config.sub depcomp \
 	install-sh missing
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/version.m4 \
@@ -70,7 +70,7 @@ PROGRAMS = $(bin_PROGRAMS) $(noinst_PROGRAMS)
 am__memcached_SOURCES_DIST = memcached.c memcached.h hash.c hash.h \
 	slabs.c slabs.h items.c items.h assoc.c assoc.h thread.c \
 	daemon.c stats.c stats.h util.c util.h trace.h cache.h \
-	sasl_defs.h cache.c solaris_priv.c sasl_defs.c
+	sasl_defs.h heat.h heat.c cache.c solaris_priv.c sasl_defs.c
 @BUILD_CACHE_TRUE@am__objects_1 = memcached-cache.$(OBJEXT)
 @BUILD_SOLARIS_PRIVS_TRUE@am__objects_2 =  \
 @BUILD_SOLARIS_PRIVS_TRUE@	memcached-solaris_priv.$(OBJEXT)
@@ -80,12 +80,14 @@ am_memcached_OBJECTS = memcached-memcached.$(OBJEXT) \
 	memcached-items.$(OBJEXT) memcached-assoc.$(OBJEXT) \
 	memcached-thread.$(OBJEXT) memcached-daemon.$(OBJEXT) \
 	memcached-stats.$(OBJEXT) memcached-util.$(OBJEXT) \
-	$(am__objects_1) $(am__objects_2) $(am__objects_3)
+	memcached-heat.$(OBJEXT) $(am__objects_1) $(am__objects_2) \
+	$(am__objects_3)
 memcached_OBJECTS = $(am_memcached_OBJECTS)
 am__memcached_debug_SOURCES_DIST = memcached.c memcached.h hash.c \
 	hash.h slabs.c slabs.h items.c items.h assoc.c assoc.h \
 	thread.c daemon.c stats.c stats.h util.c util.h trace.h \
-	cache.h sasl_defs.h cache.c solaris_priv.c sasl_defs.c
+	cache.h sasl_defs.h heat.h heat.c cache.c solaris_priv.c \
+	sasl_defs.c
 @BUILD_CACHE_TRUE@am__objects_4 = memcached_debug-cache.$(OBJEXT)
 @BUILD_SOLARIS_PRIVS_TRUE@am__objects_5 = memcached_debug-solaris_priv.$(OBJEXT)
 @ENABLE_SASL_TRUE@am__objects_6 = memcached_debug-sasl_defs.$(OBJEXT)
@@ -96,7 +98,8 @@ am__objects_7 = memcached_debug-memcached.$(OBJEXT) \
 	memcached_debug-thread.$(OBJEXT) \
 	memcached_debug-daemon.$(OBJEXT) \
 	memcached_debug-stats.$(OBJEXT) memcached_debug-util.$(OBJEXT) \
-	$(am__objects_4) $(am__objects_5) $(am__objects_6)
+	memcached_debug-heat.$(OBJEXT) $(am__objects_4) \
+	$(am__objects_5) $(am__objects_6)
 am_memcached_debug_OBJECTS = $(am__objects_7)
 memcached_debug_OBJECTS = $(am_memcached_debug_OBJECTS)
 memcached_debug_LINK = $(CCLD) $(memcached_debug_CFLAGS) $(CFLAGS) \
@@ -267,7 +270,7 @@ timedrun_SOURCES = timedrun.c
 memcached_SOURCES = memcached.c memcached.h hash.c hash.h slabs.c \
 	slabs.h items.c items.h assoc.c assoc.h thread.c daemon.c \
 	stats.c stats.h util.c util.h trace.h cache.h sasl_defs.h \
-	$(am__append_1) $(am__append_3) $(am__append_4)
+	heat.h heat.c $(am__append_1) $(am__append_3) $(am__append_4)
 memcached_debug_SOURCES = $(memcached_SOURCES)
 memcached_CPPFLAGS = -DNDEBUG
 memcached_debug_LDADD = @PROFILER_LDFLAGS@ $(am__append_9)
@@ -291,15 +294,15 @@ $(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
-	      echo ' cd $(srcdir) && $(AUTOMAKE) --foreign '; \
-	      cd $(srcdir) && $(AUTOMAKE) --foreign  \
+	      echo ' cd $(srcdir) && $(AUTOMAKE) --gnu '; \
+	      cd $(srcdir) && $(AUTOMAKE) --gnu  \
 		&& exit 0; \
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign  Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --gnu  Makefile'; \
 	cd $(top_srcdir) && \
-	  $(AUTOMAKE) --foreign  Makefile
+	  $(AUTOMAKE) --gnu  Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \
@@ -388,6 +391,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached-cache.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached-daemon.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached-hash.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached-heat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached-items.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached-memcached.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached-sasl_defs.Po@am__quote@
@@ -400,6 +404,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached_debug-cache.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached_debug-daemon.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached_debug-hash.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached_debug-heat.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached_debug-items.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached_debug-memcached.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/memcached_debug-sasl_defs.Po@am__quote@
@@ -552,6 +557,20 @@ memcached-util.obj: util.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='util.c' object='memcached-util.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o memcached-util.obj `if test -f 'util.c'; then $(CYGPATH_W) 'util.c'; else $(CYGPATH_W) '$(srcdir)/util.c'; fi`
+
+memcached-heat.o: heat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-heat.o -MD -MP -MF $(DEPDIR)/memcached-heat.Tpo -c -o memcached-heat.o `test -f 'heat.c' || echo '$(srcdir)/'`heat.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/memcached-heat.Tpo $(DEPDIR)/memcached-heat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='heat.c' object='memcached-heat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o memcached-heat.o `test -f 'heat.c' || echo '$(srcdir)/'`heat.c
+
+memcached-heat.obj: heat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-heat.obj -MD -MP -MF $(DEPDIR)/memcached-heat.Tpo -c -o memcached-heat.obj `if test -f 'heat.c'; then $(CYGPATH_W) 'heat.c'; else $(CYGPATH_W) '$(srcdir)/heat.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/memcached-heat.Tpo $(DEPDIR)/memcached-heat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='heat.c' object='memcached-heat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o memcached-heat.obj `if test -f 'heat.c'; then $(CYGPATH_W) 'heat.c'; else $(CYGPATH_W) '$(srcdir)/heat.c'; fi`
 
 memcached-cache.o: cache.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-cache.o -MD -MP -MF $(DEPDIR)/memcached-cache.Tpo -c -o memcached-cache.o `test -f 'cache.c' || echo '$(srcdir)/'`cache.c
@@ -720,6 +739,20 @@ memcached_debug-util.obj: util.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='util.c' object='memcached_debug-util.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -c -o memcached_debug-util.obj `if test -f 'util.c'; then $(CYGPATH_W) 'util.c'; else $(CYGPATH_W) '$(srcdir)/util.c'; fi`
+
+memcached_debug-heat.o: heat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -MT memcached_debug-heat.o -MD -MP -MF $(DEPDIR)/memcached_debug-heat.Tpo -c -o memcached_debug-heat.o `test -f 'heat.c' || echo '$(srcdir)/'`heat.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/memcached_debug-heat.Tpo $(DEPDIR)/memcached_debug-heat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='heat.c' object='memcached_debug-heat.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -c -o memcached_debug-heat.o `test -f 'heat.c' || echo '$(srcdir)/'`heat.c
+
+memcached_debug-heat.obj: heat.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -MT memcached_debug-heat.obj -MD -MP -MF $(DEPDIR)/memcached_debug-heat.Tpo -c -o memcached_debug-heat.obj `if test -f 'heat.c'; then $(CYGPATH_W) 'heat.c'; else $(CYGPATH_W) '$(srcdir)/heat.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/memcached_debug-heat.Tpo $(DEPDIR)/memcached_debug-heat.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='heat.c' object='memcached_debug-heat.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -c -o memcached_debug-heat.obj `if test -f 'heat.c'; then $(CYGPATH_W) 'heat.c'; else $(CYGPATH_W) '$(srcdir)/heat.c'; fi`
 
 memcached_debug-cache.o: cache.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -MT memcached_debug-cache.o -MD -MP -MF $(DEPDIR)/memcached_debug-cache.Tpo -c -o memcached_debug-cache.o `test -f 'cache.c' || echo '$(srcdir)/'`cache.c

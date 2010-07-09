@@ -50,15 +50,15 @@ am__installdirs = "$(DESTDIR)$(man1dir)"
 NROFF = nroff
 MANS = $(man_MANS)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
-ACLOCAL = ${SHELL} /home/dormando/p/danga/memcached_github_new/missing --run aclocal-1.10
-AMTAR = ${SHELL} /home/dormando/p/danga/memcached_github_new/missing --run tar
-AUTOCONF = ${SHELL} /home/dormando/p/danga/memcached_github_new/missing --run autoconf
-AUTOHEADER = ${SHELL} /home/dormando/p/danga/memcached_github_new/missing --run autoheader
-AUTOMAKE = ${SHELL} /home/dormando/p/danga/memcached_github_new/missing --run automake-1.10
+ACLOCAL = ${SHELL} /home/rbenson/source/memcached-1.4.4/missing --run aclocal-1.10
+AMTAR = ${SHELL} /home/rbenson/source/memcached-1.4.4/missing --run tar
+AUTOCONF = ${SHELL} /home/rbenson/source/memcached-1.4.4/missing --run autoconf
+AUTOHEADER = ${SHELL} /home/rbenson/source/memcached-1.4.4/missing --run autoheader
+AUTOMAKE = ${SHELL} /home/rbenson/source/memcached-1.4.4/missing --run automake-1.10
 AWK = gawk
 CC = gcc -std=gnu99
 CCDEPMODE = depmode=gcc3
-CFLAGS = -g -O2 -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
+CFLAGS = -DUSE_SYSTEM_MALLOC -g -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
 CPP = gcc -E
 CPPFLAGS = 
 CYGPATH_W = echo
@@ -78,12 +78,12 @@ INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
-LDFLAGS = 
+LDFLAGS = -L/usr/local/lib
 LIBOBJS = 
-LIBS =  -levent
+LIBS = -ltcmalloc -levent
 LTLIBOBJS = 
-MAKEINFO = ${SHELL} /home/dormando/p/danga/memcached_github_new/missing --run makeinfo
-MKDIR_P = /usr/bin/mkdir -p
+MAKEINFO = ${SHELL} /home/rbenson/source/memcached-1.4.4/missing --run makeinfo
+MKDIR_P = /bin/mkdir -p
 OBJEXT = o
 PACKAGE = memcached
 PACKAGE_BUGREPORT = brad@danga.com
@@ -101,10 +101,10 @@ STRIP =
 VERSION = 1.4.4
 XML2RFC = no
 XSLTPROC = /usr/bin/xsltproc
-abs_builddir = /home/dormando/p/danga/memcached_github_new/doc
-abs_srcdir = /home/dormando/p/danga/memcached_github_new/doc
-abs_top_builddir = /home/dormando/p/danga/memcached_github_new
-abs_top_srcdir = /home/dormando/p/danga/memcached_github_new
+abs_builddir = /home/rbenson/source/memcached-1.4.4/doc
+abs_srcdir = /home/rbenson/source/memcached-1.4.4/doc
+abs_top_builddir = /home/rbenson/source/memcached-1.4.4
+abs_top_srcdir = /home/rbenson/source/memcached-1.4.4
 ac_ct_CC = gcc
 am__include = include
 am__leading_dot = .
@@ -131,13 +131,13 @@ host_vendor = unknown
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = $(SHELL) /home/dormando/p/danga/memcached_github_new/install-sh
+install_sh = $(SHELL) /home/rbenson/source/memcached-1.4.4/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
 localstatedir = ${prefix}/var
 mandir = ${datarootdir}/man
-mkdir_p = /usr/bin/mkdir -p
+mkdir_p = /bin/mkdir -p
 oldincludedir = /usr/include
 pdfdir = ${docdir}
 prefix = /usr/local
@@ -172,9 +172,9 @@ $(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign  doc/Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --gnu  doc/Makefile'; \
 	cd $(top_srcdir) && \
-	  $(AUTOMAKE) --foreign  doc/Makefile
+	  $(AUTOMAKE) --gnu  doc/Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \

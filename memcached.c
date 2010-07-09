@@ -4610,6 +4610,10 @@ int main (int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
+    if (start_slab_heat_calc_thread() == -1) {
+        exit(EXIT_FAILURE);
+    }
+
     if (do_daemonize)
         save_pid(getpid(), pid_file);
     /* initialise clock event */

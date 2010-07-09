@@ -16,7 +16,8 @@ memcached_SOURCES = memcached.c memcached.h \
                     thread.c daemon.c \
                     stats.c stats.h \
                     util.c util.h \
-                    trace.h cache.h sasl_defs.h
+                    trace.h cache.h sasl_defs.h \
+                    heat.h heat.c
 
 if BUILD_CACHE
 memcached_SOURCES += cache.c

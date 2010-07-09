@@ -438,6 +438,7 @@ extern int daemonize(int nochdir, int noclose);
 #include "trace.h"
 #include "hash.h"
 #include "util.h"
+#include "heat.h"
 
 /*
  * Functions such as the libevent-related calls that need to do cross-thread
