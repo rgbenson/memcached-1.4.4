@@ -40,6 +40,11 @@ static item *tails[LARGEST_ID];
 static itemstats_t itemstats[LARGEST_ID];
 static unsigned int sizes[LARGEST_ID];
 
+unsigned int item_get_count(unsigned int slab_id) {
+    assert(slab_id >= 0 && slab_id < LARGEST_ID);
+    return sizes[slab_id];
+}
+
 void item_stats_reset(void) {
     pthread_mutex_lock(&cache_lock);
     memset(itemstats, 0, sizeof(itemstats));

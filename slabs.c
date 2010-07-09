@@ -340,14 +340,14 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
     total = 0;
     for(i = POWER_SMALLEST; i <= power_largest; i++) {
         slabclass_t *p = &slabclass[i];
+        char key_str[STAT_KEY_LEN];
+        char val_str[STAT_VAL_LEN];
+        int klen = 0, vlen = 0;
+
         if (p->slabs != 0) {
             uint32_t perslab, slabs;
             slabs = p->slabs;
             perslab = p->perslab;
-
-            char key_str[STAT_KEY_LEN];
-            char val_str[STAT_VAL_LEN];
-            int klen = 0, vlen = 0;
 
             APPEND_NUM_STAT(i, "chunk_size", "%u", p->size);
             APPEND_NUM_STAT(i, "chunks_per_page", "%u", perslab);
@@ -359,6 +359,9 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
             APPEND_NUM_STAT(i, "free_chunks_end", "%u", p->end_page_free);
             APPEND_NUM_STAT(i, "mem_requested", "%llu",
                             (unsigned long long)p->requested);
+            total++;
+        }
+        if (item_get_count(i) != 0) {
             APPEND_NUM_STAT(i, "get_hits", "%llu",
                     (unsigned long long)thread_stats.slab_stats[i].get_hits);
             APPEND_NUM_STAT(i, "cmd_set", "%llu",
@@ -373,14 +376,14 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
                     (unsigned long long)thread_stats.slab_stats[i].cas_hits);
             APPEND_NUM_STAT(i, "cas_badval", "%llu",
                     (unsigned long long)thread_stats.slab_stats[i].cas_badval);
-
-            total++;
         }
     }
 
     /* add overall slab stats and append terminator */
 
+#ifndef USE_SYSTEM_MALLOC
     APPEND_STAT("active_slabs", "%d", total);
+#endif
     APPEND_STAT("total_malloced", "%llu", (unsigned long long)mem_malloced);
     add_stats(NULL, 0, NULL, 0, c);
 }

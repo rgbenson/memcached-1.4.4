@@ -23,3 +23,5 @@ item *do_item_get(const char *key, const size_t nkey);
 item *do_item_get_nocheck(const char *key, const size_t nkey);
 void item_stats_reset(void);
 extern pthread_mutex_t cache_lock;
+
+unsigned int item_get_count(unsigned int slab_id);
