@@ -19,11 +19,14 @@
 #include <assert.h>
 #include <pthread.h>
 
-#define HEAT_DEBUG 0 //RGB Delete
+#define HEAT_DEBUG 0
+#define MIN_HEAT_CALC_USLEEP 10000       // 100 per sec
+#define DEFAULT_HEAT_CALC_USLEEP 1000000 // 1 per sec
 
 static void *slab_heat_calc_thread(void *arg);
 static pthread_t slab_heat_calc_tid;
 static volatile int do_run_slab_heat_calc_thread = 1;
+static unsigned int usleep_duration = DEFAULT_HEAT_CALC_USLEEP;
 
 static uint64_t write_delta[MAX_NUMBER_OF_SLAB_CLASSES];
 static uint64_t write_ops1[MAX_NUMBER_OF_SLAB_CLASSES];
@@ -44,6 +47,16 @@ int start_slab_heat_calc_thread(void) {
         fprintf(stderr,
                 "Can't create slab heat calc thread: %s\n", strerror(ret));
         return -1;
+    }
+
+    // RGB Add a new command line arg that users can set to tweak the usleep duration.
+    char *env = getenv("MEMCACHED_HEAT_CALC_USLEEP");
+    if (env != NULL) {
+        usleep_duration = atoi(env);
+        if (usleep_duration < MIN_HEAT_CALC_USLEEP ||
+           usleep_duration > DEFAULT_HEAT_CALC_USLEEP) {
+           usleep_duration = DEFAULT_HEAT_CALC_USLEEP;
+        }
     }
 
     return 0;
@@ -123,10 +136,8 @@ static inline void calc_read_write_delta(void) {
 static void *slab_heat_calc_thread(void *arg) {
     while (do_run_slab_heat_calc_thread) {
        if (HEAT_DEBUG)
-          fprintf(stderr, "rgb test\n");
+          fprintf(stderr, "RGB test\n");
 
-       usleep(1000000);
-       
        read_write_ops_swap();
        slab_get_read_write_ops(write_ops, read_ops);
        calc_read_write_delta();
@@ -137,6 +148,8 @@ static void *slab_heat_calc_thread(void *arg) {
        }
 
        // RGB Need to add heat calc here!
+
+       usleep(usleep_duration);
     }
     fprintf(stderr, "rgb exit test\n");
 
