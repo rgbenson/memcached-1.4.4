@@ -579,22 +579,25 @@ void slab_stats_aggregate(struct thread_stats *stats, struct slab_stats *out) {
     }
 }
 
-void slab_get_read_write_ops(uint64_t *write_ops, uint64_t *read_ops) {
+void slab_get_read_write_ops(uint64_t *write_ops, uint64_t *total_write_ops,
+                             uint64_t *read_ops, uint64_t *total_read_ops) {
     int sid;
     struct thread_stats thread_stats;
 
     threadlocal_stats_aggregate(&thread_stats);  //RGB We grab a lock in here where we do not need to!!
 
     for (sid = 0; sid < MAX_NUMBER_OF_SLAB_CLASSES; sid++) {
-        write_ops[sid] = thread_stats.slab_stats[sid].set_cmds;
+        *total_write_ops +=
+            write_ops[sid] = thread_stats.slab_stats[sid].set_cmds;
     }
     for (sid = 0; sid < MAX_NUMBER_OF_SLAB_CLASSES; sid++) {
-        read_ops[sid] =
-          thread_stats.slab_stats[sid].get_hits +
-          thread_stats.slab_stats[sid].delete_hits +
-          thread_stats.slab_stats[sid].decr_hits +
-          thread_stats.slab_stats[sid].incr_hits +
-          thread_stats.slab_stats[sid].cas_hits;
+        *total_read_ops +=
+            read_ops[sid] =
+               thread_stats.slab_stats[sid].get_hits +
+               thread_stats.slab_stats[sid].delete_hits +
+               thread_stats.slab_stats[sid].decr_hits +
+               thread_stats.slab_stats[sid].incr_hits +
+               thread_stats.slab_stats[sid].cas_hits;
     }
 }
 

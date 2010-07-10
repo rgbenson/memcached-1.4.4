@@ -475,7 +475,8 @@ void STATS_UNLOCK(void);
 void threadlocal_stats_reset(void);
 void threadlocal_stats_aggregate(struct thread_stats *stats);
 void slab_stats_aggregate(struct thread_stats *stats, struct slab_stats *out);
-void slab_get_read_write_ops(uint64_t *write_ops, uint64_t *read_ops);
+void slab_get_read_write_ops(uint64_t *write_ops, uint64_t *total_write_ops,
+                             uint64_t *read_ops, uint64_t *total_read_ops);
 
 /* Stat processing functions */
 void append_stat(const char *name, ADD_STAT add_stats, conn *c,
