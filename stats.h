@@ -35,7 +35,43 @@ void stats_prefix_record_set(const char *key, const size_t nkey);
 /*@null@*/
 char *stats_prefix_dump(int *length);
 
-#ifndef USE_ATOMIC_STATS
+#ifdef USE_ATOMIC_STATS
+
+#ifdef __GNUC__
+#define GCC_VERSION (__GNUC__ * 10000 \
+                         + __GNUC_MINOR__ * 100 \
+                         + __GNUC_PATCHLEVEL__)
+/* __sync_fetch_*() builtins are only defined in GCC >= 4.1.0 */
+#if GCC_VERSION < 40100
+#error USE_ATOMIC_STATS requires GCC version >= 4.1.0.
+#else
+
+#define STATS_LOCK()   /* NOP */
+#define STATS_UNLOCK() /* NOP */
+
+/*
+ * See http://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Atomic-Builtins.html
+ * for more information about the __sync_fetch_*() builtins.
+ */
+#define STAT_GET(stat) __sync_fetch_and_add(&_stats.stat, 0)
+#define STAT_INC(stat) __sync_fetch_and_add(&_stats.stat, 1)
+#define STAT_INC_BY(stat, amount) __sync_fetch_and_add(&_stats.stat, amount)
+#define STAT_DEC(stat) __sync_fetch_and_sub(&_stats.stat, 1)
+#define STAT_DEC_BY(stat, amount) __sync_fetch_and_sub(&_stats.stat, amount)
+#define STAT_SET_TRUE(stat) __sync_bool_compare_and_swap(&_stats.stat, false, true)
+#define STAT_SET_FALSE(stat) __sync_bool_compare_and_swap(&_stats.stat, true, false)
+#define STAT_RESET(stat) __sync_fetch_and_and(&_stats.stat, 0)
+
+#endif /* GCC VERSION */
+
+#else /* GCC */
+
+#error USE_ATOMIC_STATS is not supported when using non-GCC compiler.
+
+#endif /* GCC */
+
+#else /* USE_ATOMIC_STATS */
+
 void stats_lock_work(void);
 void stats_unlock_work(void);
 
@@ -47,25 +83,13 @@ void stats_unlock_work(void);
     stats_unlock_work();  \
 }
 
-#define STAT_INC(stat) _stats.stat++;
-#define STAT_INC_BY(stat, amount) _stats.stat += amount;
-#define STAT_DEC(stat) _stats.stat--;
-#define STAT_DEC_BY(stat, amount) _stats.stat -= amount;
-#define STAT_SET_TRUE(stat) _stats.stat = true;
-#define STAT_SET_FALSE(stat) _stats.stat = false;
-#define STAT_RESET(stat) _stats.stat = 0;
+#define STAT_GET(stat) _stats.stat
+#define STAT_INC(stat) _stats.stat++
+#define STAT_INC_BY(stat, amount) _stats.stat += amount
+#define STAT_DEC(stat) _stats.stat--
+#define STAT_DEC_BY(stat, amount) _stats.stat -= amount
+#define STAT_SET_TRUE(stat) _stats.stat = true
+#define STAT_SET_FALSE(stat) _stats.stat = false
+#define STAT_RESET(stat) _stats.stat = 0
 
-#else
-
-#define STATS_LOCK()  /* NOP */
-#define STATS_UNLOCK()  /* NOP */
-
-#define STAT_INC(stat) __sync_fetch_and_add(&_stats.stat, 1);
-#define STAT_INC_BY(stat, amount) __sync_fetch_and_add(&_stats.stat, amount);
-#define STAT_DEC(stat) __sync_fetch_and_sub(&_stats.stat, 1);
-#define STAT_DEC_BY(stat, amount) __sync_fetch_and_sub(&_stats.stat, amount);
-#define STAT_SET_TRUE(stat) __sync_bool_compare_and_swap(&_stats.stat, false, true);
-#define STAT_SET_FALSE(stat) __sync_bool_compare_and_swap(&_stats.stat, true, false);
-#define STAT_RESET(stat) __sync_fetch_and_and(&_stats.stat, 0);
-
-#endif
+#endif /* USE_ATOMIC_STATS */

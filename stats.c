@@ -99,12 +99,12 @@ void stats_unlock_work() {
 
 void global_stats(ADD_STAT add_stats, void *c) {
     /* prepare general statistics for the engine */
-    STATS_LOCK() { // RGB Do we need this lock here?
-        APPEND_STAT("bytes", "%llu", (unsigned long long)_stats.curr_bytes);
-        APPEND_STAT("curr_items", "%u", _stats.curr_items);
-        APPEND_STAT("total_items", "%u", _stats.total_items);
+    STATS_LOCK() {
+        APPEND_STAT("bytes", "%llu", (unsigned long long)STAT_GET(curr_bytes));
+        APPEND_STAT("curr_items", "%u", STAT_GET(curr_items));
+        APPEND_STAT("total_items", "%u", STAT_GET(total_items));
         APPEND_STAT("total_evictions", "%llu",
-                    (unsigned long long)_stats.total_evictions);
+                    (unsigned long long)STAT_GET(total_evictions));
     } STATS_UNLOCK();
 }
 
@@ -113,12 +113,12 @@ void stats_get_server_state(unsigned int *curr_conns,
                             unsigned int *conn_structs,
                             unsigned int *accepting_conns,
                             uint64_t *listen_disabled_num) {
-    STATS_LOCK() { // RGB Do we need this lock here?
-        *curr_conns = _stats.curr_conns - 1;
-        *total_conns =  _stats.total_conns;
-        *conn_structs = _stats.conn_structs;
-        *accepting_conns = _stats.accepting_conns;
-        *listen_disabled_num = _stats.listen_disabled_num;
+    STATS_LOCK() {
+        *curr_conns = STAT_GET(curr_conns) - 1;
+        *total_conns =  STAT_GET(total_conns);
+        *conn_structs = STAT_GET(conn_structs);
+        *accepting_conns = STAT_GET(accepting_conns);
+        *listen_disabled_num = STAT_GET(listen_disabled_num);
     } STATS_UNLOCK();
 }
 
