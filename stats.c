@@ -14,7 +14,12 @@
 #include <assert.h>
 #include <pthread.h>
 
-/* Lock for prefix global stats */
+#ifndef USE_ATOMIC_STATS
+/* Lock for global stats */
+static pthread_mutex_t stats_lock;
+#endif
+
+/* Lock for global prefix stats */
 static pthread_mutex_t prefix_stats_lock;
 
 #define PREFIX_STATS_LOCK()                 \
@@ -53,7 +58,9 @@ void stats_prefix_init() {
 }
 
 void stats_init(void) {
-    pthread_mutex_init(&stats.mutex, NULL);
+#ifndef USE_ATOMIC_STATS
+    pthread_mutex_init(&stats_lock, NULL);
+#endif
     STATS_LOCK() {
         STAT_RESET(curr_items);
         STAT_RESET(total_items);
@@ -63,7 +70,7 @@ void stats_init(void) {
         STAT_RESET(total_evictions);
         STAT_RESET(curr_bytes);
         STAT_RESET(listen_disabled_num);
-        STAT_SET(accepting_conns, true); /* assuming we start in this state. */
+        STAT_SET_TRUE(accepting_conns); /* assuming we start in this state. */
     } STATS_UNLOCK();
     stats_prefix_init();
 }
@@ -80,21 +87,25 @@ void stats_reset(void) {
     item_stats_reset();
 }
 
+#ifndef USE_ATOMIC_STATS
 void stats_lock_work() {
-      pthread_mutex_lock(&stats.mutex);
+      pthread_mutex_lock(&stats_lock);
 }
 
 void stats_unlock_work() {
-      pthread_mutex_unlock(&stats.mutex);
+      pthread_mutex_unlock(&stats_lock);
 }
+#endif
 
 void global_stats(ADD_STAT add_stats, void *c) {
     /* prepare general statistics for the engine */
-    APPEND_STAT("bytes", "%llu", (unsigned long long)stats.curr_bytes);
-    APPEND_STAT("curr_items", "%u", stats.curr_items);
-    APPEND_STAT("total_items", "%u", stats.total_items);
-    APPEND_STAT("evictions", "%llu",
-                (unsigned long long)stats.total_evictions);
+    STATS_LOCK() { // RGB Do we need this lock here?
+        APPEND_STAT("bytes", "%llu", (unsigned long long)_stats.curr_bytes);
+        APPEND_STAT("curr_items", "%u", _stats.curr_items);
+        APPEND_STAT("total_items", "%u", _stats.total_items);
+        APPEND_STAT("total_evictions", "%llu",
+                    (unsigned long long)_stats.total_evictions);
+    } STATS_UNLOCK();
 }
 
 void stats_get_server_state(unsigned int *curr_conns,
@@ -102,12 +113,12 @@ void stats_get_server_state(unsigned int *curr_conns,
                             unsigned int *conn_structs,
                             unsigned int *accepting_conns,
                             uint64_t *listen_disabled_num) {
-    STATS_LOCK() {
-        *curr_conns = stats.curr_conns - 1;
-        *total_conns =  stats.total_conns;
-        *conn_structs = stats.conn_structs;
-        *accepting_conns = stats.accepting_conns;
-        *listen_disabled_num = stats.listen_disabled_num;
+    STATS_LOCK() { // RGB Do we need this lock here?
+        *curr_conns = _stats.curr_conns - 1;
+        *total_conns =  _stats.total_conns;
+        *conn_structs = _stats.conn_structs;
+        *accepting_conns = _stats.accepting_conns;
+        *listen_disabled_num = _stats.listen_disabled_num;
     } STATS_UNLOCK();
 }
 

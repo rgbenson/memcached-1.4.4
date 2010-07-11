@@ -58,7 +58,7 @@ AUTOMAKE = ${SHELL} /home/rbenson/source/memcached-1.4.4/missing --run automake-
 AWK = gawk
 CC = gcc -std=gnu99
 CCDEPMODE = depmode=gcc3
-CFLAGS = -DUSE_SYSTEM_MALLOC -g -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
+CFLAGS = -DUSE_SYSTEM_MALLOC -DUSE_ATOMIC_STATS -g -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
 CPP = gcc -E
 CPPFLAGS = 
 CYGPATH_W = echo

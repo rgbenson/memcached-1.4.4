@@ -3314,11 +3314,11 @@ void do_accept_new_conns(const bool do_accept) {
 
     if (do_accept) {
         STATS_LOCK() {
-            STAT_SET(accepting_conns, true);
+            STAT_SET_TRUE(accepting_conns);
         } STATS_UNLOCK();
     } else {
         STATS_LOCK() {
-            STAT_SET(accepting_conns, false);
+            STAT_SET_FALSE(accepting_conns);
             STAT_INC(listen_disabled_num);
         } STATS_UNLOCK();
     }
