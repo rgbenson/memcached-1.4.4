@@ -74,7 +74,6 @@ static enum try_read_result try_read_udp(conn *c);
 static void conn_set_state(conn *c, enum conn_states state);
 
 /* stats */
-static void stats_init(void);
 static void server_stats(ADD_STAT add_stats, conn *c);
 static void process_stat_settings(ADD_STAT add_stats, void *c);
 
@@ -103,7 +102,6 @@ static void set_current_time(void);  /* update the global variable holding
 static void conn_free(conn *c);
 
 /** exported globals **/
-struct stats stats;
 struct settings settings;
 time_t process_started;     /* when the process was started */
 
@@ -145,31 +143,6 @@ static rel_time_t realtime(const time_t exptime) {
     } else {
         return (rel_time_t)(exptime + current_time);
     }
-}
-
-static void stats_init(void) {
-    stats.curr_items = stats.total_items = stats.curr_conns = stats.total_conns = stats.conn_structs = 0;
-    stats.get_cmds = stats.set_cmds = stats.get_hits = stats.get_misses = stats.evictions = 0;
-    stats.curr_bytes = stats.listen_disabled_num = 0;
-    stats.accepting_conns = true; /* assuming we start in this state. */
-
-    /* make the time we started always be 2 seconds before we really
-       did, so time(0) - time.started is never zero.  if so, things
-       like 'settings.oldest_live' which act as booleans as well as
-       values are now false in boolean context... */
-    process_started = time(0) - 2;
-    stats_prefix_init();
-}
-
-static void stats_reset(void) {
-    STATS_LOCK();
-    stats.total_items = stats.total_conns = 0;
-    stats.evictions = 0;
-    stats.listen_disabled_num = 0;
-    stats_prefix_clear();
-    STATS_UNLOCK();
-    threadlocal_stats_reset();
-    item_stats_reset();
 }
 
 static void settings_init(void) {
@@ -359,9 +332,9 @@ conn *conn_new(const int sfd, enum conn_states init_state,
             return NULL;
         }
 
-        STATS_LOCK();
-        stats.conn_structs++;
-        STATS_UNLOCK();
+        STATS_LOCK() {
+            STAT_INC(conn_structs);
+        } STATS_UNLOCK();
     }
 
     c->transport = transport;
@@ -430,10 +403,10 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         return NULL;
     }
 
-    STATS_LOCK();
-    stats.curr_conns++;
-    stats.total_conns++;
-    STATS_UNLOCK();
+    STATS_LOCK() {
+        STAT_INC(curr_conns);
+        STAT_INC(total_conns);
+    } STATS_UNLOCK();
 
     MEMCACHED_CONN_ALLOCATE(c->sfd);
 
@@ -515,9 +488,9 @@ static void conn_close(conn *c) {
         conn_free(c);
     }
 
-    STATS_LOCK();
-    stats.curr_conns--;
-    STATS_UNLOCK();
+    STATS_LOCK() {
+        STAT_DEC(curr_conns);
+    } STATS_UNLOCK();
 
     return;
 }
@@ -2354,6 +2327,8 @@ inline static void process_stats_detail(conn *c, const char *command) {
 
 /* return server specific stats only */
 static void server_stats(ADD_STAT add_stats, conn *c) {
+    uint64_t listen_disabled_num;
+    unsigned int curr_conns, total_conns, conn_structs, accepting_conns;
     pid_t pid = getpid();
     rel_time_t now = current_time;
 
@@ -2362,12 +2337,16 @@ static void server_stats(ADD_STAT add_stats, conn *c) {
     struct slab_stats slab_stats;
     slab_stats_aggregate(&thread_stats, &slab_stats);
 
+    stats_get_server_state(&curr_conns,
+                           &total_conns,
+                           &conn_structs,
+                           &accepting_conns,
+                           &listen_disabled_num);
+
 #ifndef WIN32
     struct rusage usage;
     getrusage(RUSAGE_SELF, &usage);
 #endif /* !WIN32 */
-
-    STATS_LOCK();
 
     APPEND_STAT("pid", "%lu", (long)pid);
     APPEND_STAT("uptime", "%u", now);
@@ -2384,9 +2363,9 @@ static void server_stats(ADD_STAT add_stats, conn *c) {
                 (long)usage.ru_stime.tv_usec);
 #endif /* !WIN32 */
 
-    APPEND_STAT("curr_connections", "%u", stats.curr_conns - 1);
-    APPEND_STAT("total_connections", "%u", stats.total_conns);
-    APPEND_STAT("connection_structures", "%u", stats.conn_structs);
+    APPEND_STAT("curr_connections", "%u", curr_conns);
+    APPEND_STAT("total_connections", "%u", total_conns);
+    APPEND_STAT("connection_structures", "%u", conn_structs);
     APPEND_STAT("cmd_get", "%llu", (unsigned long long)thread_stats.get_cmds);
     APPEND_STAT("cmd_set", "%llu", (unsigned long long)slab_stats.set_cmds);
     APPEND_STAT("cmd_flush", "%llu", (unsigned long long)thread_stats.flush_cmds);
@@ -2406,11 +2385,10 @@ static void server_stats(ADD_STAT add_stats, conn *c) {
     APPEND_STAT("bytes_read", "%llu", (unsigned long long)thread_stats.bytes_read);
     APPEND_STAT("bytes_written", "%llu", (unsigned long long)thread_stats.bytes_written);
     APPEND_STAT("limit_maxbytes", "%llu", (unsigned long long)settings.maxbytes);
-    APPEND_STAT("accepting_conns", "%u", stats.accepting_conns);
-    APPEND_STAT("listen_disabled_num", "%llu", (unsigned long long)stats.listen_disabled_num);
+    APPEND_STAT("accepting_conns", "%u", accepting_conns);
+    APPEND_STAT("listen_disabled_num", "%llu", (unsigned long long)listen_disabled_num);
     APPEND_STAT("threads", "%d", settings.num_threads);
     APPEND_STAT("conn_yields", "%llu", (unsigned long long)thread_stats.conn_yields);
-    STATS_UNLOCK();
 }
 
 static void process_stat_settings(ADD_STAT add_stats, void *c) {
@@ -3335,14 +3313,14 @@ void do_accept_new_conns(const bool do_accept) {
     }
 
     if (do_accept) {
-        STATS_LOCK();
-        stats.accepting_conns = true;
-        STATS_UNLOCK();
+        STATS_LOCK() {
+            STAT_SET(accepting_conns, true);
+        } STATS_UNLOCK();
     } else {
-        STATS_LOCK();
-        stats.accepting_conns = false;
-        stats.listen_disabled_num++;
-        STATS_UNLOCK();
+        STATS_LOCK() {
+            STAT_SET(accepting_conns, false);
+            STAT_INC(listen_disabled_num);
+        } STATS_UNLOCK();
     }
 }
 
@@ -4586,6 +4564,12 @@ int main (int argc, char **argv) {
 
     /* initialize main thread libevent instance */
     main_base = event_init();
+
+    /* make the time we started always be 2 seconds before we really
+       did, so time(0) - time.started is never zero.  if so, things
+       like 'settings.oldest_live' which act as booleans as well as
+       values are now false in boolean context... */
+    process_started = time(0) - 2;
 
     /* initialize other stuff */
     stats_init();

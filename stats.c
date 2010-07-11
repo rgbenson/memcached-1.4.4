@@ -12,6 +12,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <pthread.h>
+
+/* Lock for prefix global stats */
+static pthread_mutex_t prefix_stats_lock;
+
+#define PREFIX_STATS_LOCK()                 \
+{                                           \
+  pthread_mutex_lock(&prefix_stats_lock);   \
+  
+#define PREFIX_STATS_UNLOCK()               \
+  pthread_mutex_unlock(&prefix_stats_lock); \
+}
 
 /*
  * Stats are tracked on the basis of key prefixes. This is a simple
@@ -36,7 +48,67 @@ static int num_prefixes = 0;
 static int total_prefix_size = 0;
 
 void stats_prefix_init() {
+    pthread_mutex_init(&prefix_stats_lock, NULL);
     memset(prefix_stats, 0, sizeof(prefix_stats));
+}
+
+void stats_init(void) {
+    pthread_mutex_init(&stats.mutex, NULL);
+    STATS_LOCK() {
+        STAT_RESET(curr_items);
+        STAT_RESET(total_items);
+        STAT_RESET(curr_conns);
+        STAT_RESET(total_conns);
+        STAT_RESET(conn_structs);
+        STAT_RESET(total_evictions);
+        STAT_RESET(curr_bytes);
+        STAT_RESET(listen_disabled_num);
+        STAT_SET(accepting_conns, true); /* assuming we start in this state. */
+    } STATS_UNLOCK();
+    stats_prefix_init();
+}
+
+void stats_reset(void) {
+    STATS_LOCK() {
+        STAT_RESET(total_items);
+        STAT_RESET(total_conns);
+        STAT_RESET(total_evictions);
+        STAT_RESET(listen_disabled_num);
+        stats_prefix_clear();
+    } STATS_UNLOCK();
+    threadlocal_stats_reset();
+    item_stats_reset();
+}
+
+void stats_lock_work() {
+      pthread_mutex_lock(&stats.mutex);
+}
+
+void stats_unlock_work() {
+      pthread_mutex_unlock(&stats.mutex);
+}
+
+void global_stats(ADD_STAT add_stats, void *c) {
+    /* prepare general statistics for the engine */
+    APPEND_STAT("bytes", "%llu", (unsigned long long)stats.curr_bytes);
+    APPEND_STAT("curr_items", "%u", stats.curr_items);
+    APPEND_STAT("total_items", "%u", stats.total_items);
+    APPEND_STAT("evictions", "%llu",
+                (unsigned long long)stats.total_evictions);
+}
+
+void stats_get_server_state(unsigned int *curr_conns,
+                            unsigned int *total_conns,
+                            unsigned int *conn_structs,
+                            unsigned int *accepting_conns,
+                            uint64_t *listen_disabled_num) {
+    STATS_LOCK() {
+        *curr_conns = stats.curr_conns - 1;
+        *total_conns =  stats.total_conns;
+        *conn_structs = stats.conn_structs;
+        *accepting_conns = stats.accepting_conns;
+        *listen_disabled_num = stats.listen_disabled_num;
+    } STATS_UNLOCK();
 }
 
 /*
@@ -122,15 +194,15 @@ static PREFIX_STATS *stats_prefix_find(const char *key, const size_t nkey) {
 void stats_prefix_record_get(const char *key, const size_t nkey, const bool is_hit) {
     PREFIX_STATS *pfs;
 
-    STATS_LOCK();
-    pfs = stats_prefix_find(key, nkey);
-    if (NULL != pfs) {
-        pfs->num_gets++;
-        if (is_hit) {
-            pfs->num_hits++;
+    PREFIX_STATS_LOCK() {
+        pfs = stats_prefix_find(key, nkey);
+        if (NULL != pfs) {
+            pfs->num_gets++;
+            if (is_hit) {
+                pfs->num_hits++;
+            }
         }
-    }
-    STATS_UNLOCK();
+    } PREFIX_STATS_UNLOCK();
 }
 
 /*
@@ -139,12 +211,12 @@ void stats_prefix_record_get(const char *key, const size_t nkey, const bool is_h
 void stats_prefix_record_delete(const char *key, const size_t nkey) {
     PREFIX_STATS *pfs;
 
-    STATS_LOCK();
-    pfs = stats_prefix_find(key, nkey);
-    if (NULL != pfs) {
-        pfs->num_deletes++;
-    }
-    STATS_UNLOCK();
+    PREFIX_STATS_LOCK() {
+        pfs = stats_prefix_find(key, nkey);
+        if (NULL != pfs) {
+            pfs->num_deletes++;
+        }
+    } PREFIX_STATS_UNLOCK();
 }
 
 /*
@@ -153,12 +225,12 @@ void stats_prefix_record_delete(const char *key, const size_t nkey) {
 void stats_prefix_record_set(const char *key, const size_t nkey) {
     PREFIX_STATS *pfs;
 
-    STATS_LOCK();
-    pfs = stats_prefix_find(key, nkey);
-    if (NULL != pfs) {
-        pfs->num_sets++;
-    }
-    STATS_UNLOCK();
+    PREFIX_STATS_LOCK() {
+        pfs = stats_prefix_find(key, nkey);
+        if (NULL != pfs) {
+            pfs->num_sets++;
+        }
+    } PREFIX_STATS_UNLOCK();
 }
 
 /*
@@ -166,11 +238,10 @@ void stats_prefix_record_set(const char *key, const size_t nkey) {
  */
 /*@null@*/
 char *stats_prefix_dump(int *length) {
-    const char *format = "PREFIX %s get %llu hit %llu set %llu del %llu\r\n";
-    PREFIX_STATS *pfs;
+    int pos;
     char *buf;
-    int i, pos;
-    size_t size = 0, written = 0, total_written = 0;
+    size_t size = 0;
+    const char *format = "PREFIX %s get %llu hit %llu set %llu del %llu\r\n";
 
     /*
      * Figure out how big the buffer needs to be. This is the sum of the
@@ -178,33 +249,36 @@ char *stats_prefix_dump(int *length) {
      * the per-prefix output with 20-digit values for all the counts,
      * plus space for the "END" at the end.
      */
-    STATS_LOCK();
-    size = strlen(format) + total_prefix_size +
-           num_prefixes * (strlen(format) - 2 /* %s */
-                           + 4 * (20 - 4)) /* %llu replaced by 20-digit num */
-                           + sizeof("END\r\n");
-    buf = malloc(size);
-    if (NULL == buf) {
+    PREFIX_STATS_LOCK() {
+        size = strlen(format) + total_prefix_size +
+               num_prefixes * (strlen(format) - 2 /* %s */
+                               + 4 * (20 - 4)) /* %llu replaced by 20-digit num */
+                               + sizeof("END\r\n");
+        buf = malloc(size);
+        if (buf != NULL) {
+            int i;
+            size_t written = 0, total_written = 0;
+            pos = 0;
+            for (i = 0; i < PREFIX_HASH_SIZE; i++) {
+                PREFIX_STATS *pfs;
+                for (pfs = prefix_stats[i]; NULL != pfs; pfs = pfs->next) {
+                    written = snprintf(buf + pos, size-pos, format,
+                                   pfs->prefix, pfs->num_gets, pfs->num_hits,
+                                   pfs->num_sets, pfs->num_deletes);
+                    pos += written;
+                    total_written += written;
+                    assert(total_written < size);
+                }
+            }
+        }
+    } PREFIX_STATS_UNLOCK();
+
+    if (buf == NULL) {
         perror("Can't allocate stats response: malloc");
-        STATS_UNLOCK();
         return NULL;
     }
 
-    pos = 0;
-    for (i = 0; i < PREFIX_HASH_SIZE; i++) {
-        for (pfs = prefix_stats[i]; NULL != pfs; pfs = pfs->next) {
-            written = snprintf(buf + pos, size-pos, format,
-                           pfs->prefix, pfs->num_gets, pfs->num_hits,
-                           pfs->num_sets, pfs->num_deletes);
-            pos += written;
-            total_written += written;
-            assert(total_written < size);
-        }
-    }
-
-    STATS_UNLOCK();
     memcpy(buf + pos, "END\r\n", 6);
-
     *length = pos + 5;
     return buf;
 }

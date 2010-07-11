@@ -39,9 +39,6 @@ pthread_mutex_t cache_lock;
 /* Connection lock around accepting new connections */
 pthread_mutex_t conn_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/* Lock for global stats */
-static pthread_mutex_t stats_lock;
-
 /* Free list of CQ_ITEM structs */
 static CQ_ITEM *cqi_freelist;
 static pthread_mutex_t cqi_freelist_lock;
@@ -461,14 +458,6 @@ void  item_stats_sizes(ADD_STAT add_stats, void *c) {
 
 /******************************* GLOBAL STATS ******************************/
 
-void STATS_LOCK() {
-    pthread_mutex_lock(&stats_lock);
-}
-
-void STATS_UNLOCK() {
-    pthread_mutex_unlock(&stats_lock);
-}
-
 void threadlocal_stats_reset(void) {
     int ii, sid;
     for (ii = 0; ii < settings.num_threads; ++ii) {
@@ -589,7 +578,6 @@ void thread_init(int nthreads, struct event_base *main_base) {
     int         i;
 
     pthread_mutex_init(&cache_lock, NULL);
-    pthread_mutex_init(&stats_lock, NULL);
 
     pthread_mutex_init(&init_lock, NULL);
     pthread_cond_init(&init_cond, NULL);

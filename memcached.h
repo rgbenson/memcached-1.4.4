@@ -224,27 +224,6 @@ struct thread_stats {
     struct slab_stats slab_stats[MAX_NUMBER_OF_SLAB_CLASSES];
 };
 
-/**
- * Global stats.
- */
-struct stats {
-    pthread_mutex_t mutex;
-    unsigned int  curr_items;
-    unsigned int  total_items;
-    uint64_t      curr_bytes;
-    unsigned int  curr_conns;
-    unsigned int  total_conns;
-    unsigned int  conn_structs;
-    uint64_t      get_cmds;
-    uint64_t      set_cmds;
-    uint64_t      get_hits;
-    uint64_t      get_misses;
-    uint64_t      evictions;
-    time_t        started;          /* when the process was started */
-    bool          accepting_conns;  /* whether we are currently accepting */
-    uint64_t      listen_disabled_num;
-};
-
 #define MAX_VERBOSITY_LEVEL 2
 
 /* When adding a setting, be sure to update process_stat_settings */
@@ -276,7 +255,6 @@ struct settings {
     bool sasl;              /* SASL on/off */
 };
 
-extern struct stats stats;
 extern time_t process_started;
 extern struct settings settings;
 
@@ -430,7 +408,6 @@ enum store_item_type do_store_item(item *item, int comm, conn* c);
 conn *conn_new(const int sfd, const enum conn_states init_state, const int event_flags, const int read_buffer_size, enum network_transport transport, struct event_base *base);
 extern int daemonize(int nochdir, int noclose);
 
-
 #include "stats.h"
 #include "slabs.h"
 #include "assoc.h"
@@ -469,8 +446,7 @@ void  item_stats_sizes(ADD_STAT add_stats, void *c);
 void  item_unlink(item *it);
 void  item_update(item *it);
 
-void STATS_LOCK(void);
-void STATS_UNLOCK(void);
+
 void threadlocal_stats_reset(void);
 void threadlocal_stats_aggregate(struct thread_stats *stats);
 void slab_stats_aggregate(struct thread_stats *stats, struct slab_stats *out);

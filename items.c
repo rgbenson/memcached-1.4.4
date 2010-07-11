@@ -152,9 +152,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                     itemstats[id].evicted_time = current_time - search->time;
                     if (search->exptime != 0)
                         itemstats[id].evicted_nonzero++;
-                    STATS_LOCK();
-                    stats.evictions++;
-                    STATS_UNLOCK();
+                    STATS_LOCK() {
+                        STAT_INC(total_evictions);
+                    } STATS_UNLOCK();
                 }
                 do_item_unlink(search);
                 break;
@@ -282,11 +282,11 @@ int do_item_link(item *it) {
     it->time = current_time;
     assoc_insert(it);
 
-    STATS_LOCK();
-    stats.curr_bytes += ITEM_ntotal(it);
-    stats.curr_items += 1;
-    stats.total_items += 1;
-    STATS_UNLOCK();
+    STATS_LOCK() {
+        STAT_INC_BY(curr_bytes, ITEM_ntotal(it));
+        STAT_INC(curr_items);
+        STAT_INC(total_items);
+    } STATS_UNLOCK();
 
     /* Allocate a new CAS ID on link. */
     ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
@@ -300,10 +300,10 @@ void do_item_unlink(item *it) {
     MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     if ((it->it_flags & ITEM_LINKED) != 0) {
         it->it_flags &= ~ITEM_LINKED;
-        STATS_LOCK();
-        stats.curr_bytes -= ITEM_ntotal(it);
-        stats.curr_items -= 1;
-        STATS_UNLOCK();
+        STATS_LOCK() {
+            STAT_DEC_BY(curr_bytes, ITEM_ntotal(it));
+            STAT_DEC(curr_items);
+        } STATS_UNLOCK();
         assoc_delete(ITEM_key(it), it->nkey);
         item_unlink_q(it);
         if (it->refcount == 0) item_free(it);
