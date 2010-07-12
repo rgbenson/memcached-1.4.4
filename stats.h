@@ -36,15 +36,34 @@ void stats_prefix_record_set(const char *key, const size_t nkey);
 char *stats_prefix_dump(int *length);
 
 #ifdef USE_ATOMIC_STATS
+#undef USE_ATOMIC_STATS
+#define USE_ATOMIC_STATS_SET
 
 #ifdef __GNUC__
 #define GCC_VERSION (__GNUC__ * 10000 \
                          + __GNUC_MINOR__ * 100 \
                          + __GNUC_PATCHLEVEL__)
-/* __sync_fetch_*() builtins are only defined in GCC >= 4.1.0 */
-#if GCC_VERSION < 40100
+/* __sync_fetch_*() builtins are only defined in GCC version >= 4.1.0 */
+#if GCC_VERSION >= 40100
+#define USE_ATOMIC_STATS
+#else /* GCC_VERSION */
 #error USE_ATOMIC_STATS requires GCC version >= 4.1.0.
-#else
+#endif /* GCC_VERSION */
+#endif /* __GNUC__ */
+
+#ifdef __ICC
+#define USE_ATOMIC_STATS
+#endif /* __ICC */
+
+#endif /* USE_ATOMIC_STATS*/
+
+
+#if defined(USE_ATOMIC_STATS_SET) && !defined(USE_ATOMIC_STATS)
+#error USE_ATOMIC_STATS is not supported with this compiler.
+#endif /* defined(USE_ATOMIC_STATS_SET) && !defined(USE_ATOMIC_STATS) */
+
+
+#ifdef USE_ATOMIC_STATS 
 
 #define STATS_LOCK()   /* NOP */
 #define STATS_UNLOCK() /* NOP */
@@ -61,14 +80,6 @@ char *stats_prefix_dump(int *length);
 #define STAT_SET_TRUE(stat) __sync_bool_compare_and_swap(&_stats.stat, false, true)
 #define STAT_SET_FALSE(stat) __sync_bool_compare_and_swap(&_stats.stat, true, false)
 #define STAT_RESET(stat) __sync_fetch_and_and(&_stats.stat, 0)
-
-#endif /* GCC VERSION */
-
-#else /* GCC */
-
-#error USE_ATOMIC_STATS is not supported when using non-GCC compiler.
-
-#endif /* GCC */
 
 #else /* USE_ATOMIC_STATS */
 
