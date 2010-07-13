@@ -82,14 +82,14 @@ static void slabs_preallocate (const unsigned int maxslabs);
  */
 
 unsigned int slabs_clsid(const size_t size) {
-    int res = POWER_SMALLEST;
-
     if (size == 0)
         return 0;
 
 #ifdef USE_SYSTEM_MALLOC
     return 1;
 #else
+    int res = POWER_SMALLEST;
+
     while (size > slabclass[res].size)
         if (res++ == power_largest)     /* won't fit in the biggest slab */
             return 0;

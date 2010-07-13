@@ -88,6 +88,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     uint8_t nsuffix;
     item *it = NULL;
     char suffix[40];
+    unsigned int freed_bytes;
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
     if (settings.use_cas) {
         ntotal += sizeof(uint64_t);
@@ -98,27 +99,38 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         return 0;
 
     /* do a quick check if we have any expired items in the tail.. */
+#ifdef USE_SYSTEM_MALLOC
+    int outer_tries = 500;
+#endif
     int tries = 50;
     item *search;
 
-    for (search = tails[id];
-         tries > 0 && search != NULL;
-         tries--, search=search->prev) {
-        if (search->refcount == 0 &&
-            (search->exptime != 0 && search->exptime < current_time)) {
-            it = search;
-            /* I don't want to actually free the object, just steal
-             * the item to avoid to grab the slab mutex twice ;-)
-             */
-            it->refcount = 1;
-            do_item_unlink(it);
-            /* Initialize the item block: */
-            it->slabs_clsid = 0;
-            it->refcount = 0;
-            break;
+#ifdef USE_SYSTEM_MALLOC
+    for (freed_bytes = 0; freed_bytes < ntotal && outer_tries > 0; outer_tries--) {
+#endif
+        for (search = tails[id];
+             tries > 0 && search != NULL;
+             tries--, search=search->prev) {
+            if (search->refcount == 0 &&
+                (search->exptime != 0 && search->exptime < current_time)) {
+                it = search;
+                /* I don't want to actually free the object, just steal
+                 * the item to avoid to grab the slab mutex twice ;-)
+                 */
+                it->refcount = 1;
+#ifdef USE_SYSTEM_MALLOC
+                freed_bytes += ITEM_ntotal(search);
+#endif
+                do_item_unlink(it);
+                /* Initialize the item block: */
+                it->slabs_clsid = 0;
+                it->refcount = 0;
+                break;
+            }
         }
+#ifdef USE_SYSTEM_MALLOC
     }
-
+#endif
     if (it == NULL && (it = slabs_alloc(ntotal, id)) == NULL) {
         /*
         ** Could not find an expired item at the tail, and memory allocation
@@ -148,8 +160,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         }
 
 #ifdef USE_SYSTEM_MALLOC
-        /* try to alloc memory up to (SYSTEM_MALLOC_TRIES_MULTIPLIER * 10) times */
-        for (int freed = 0; freed < ntotal && tries * 10 > 0;) {
+        outer_tries = 500;
+        for (freed_bytes = 0; freed_bytes < ntotal && outer_tries > 0; outer_tries--) {
 #endif
             for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount == 0) {
@@ -162,6 +174,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                         stats.evictions++;
                         STATS_UNLOCK();
                     }
+#ifdef USE_SYSTEM_MALLOC
+                    freed_bytes += ITEM_ntotal(search);
+#endif
                     do_item_unlink(search);
                     break;
                 }
