@@ -24,6 +24,8 @@ static void item_unlink_q(item *it);
  */
 #define ITEM_UPDATE_INTERVAL 60
 
+#define SYSTEM_MALLOC_TRIES_MULTIPLIER 10
+
 #define LARGEST_ID POWER_LARGEST
 typedef struct {
     unsigned int evicted;
@@ -145,21 +147,29 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             return NULL;
         }
 
-        for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
-            if (search->refcount == 0) {
-                if (search->exptime == 0 || search->exptime > current_time) {
-                    itemstats[id].evicted++;
-                    itemstats[id].evicted_time = current_time - search->time;
-                    if (search->exptime != 0)
-                        itemstats[id].evicted_nonzero++;
-                    STATS_LOCK();
-                    stats.evictions++;
-                    STATS_UNLOCK();
+#ifdef USE_SYSTEM_MALLOC
+        /* try to alloc memory up to (SYSTEM_MALLOC_TRIES_MULTIPLIER * 10) times */
+        for (int freed = 0; freed < ntotal && tries * 10 > 0;) {
+#endif
+            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+                if (search->refcount == 0) {
+                    if (search->exptime == 0 || search->exptime > current_time) {
+                        itemstats[id].evicted++;
+                        itemstats[id].evicted_time = current_time - search->time;
+                        if (search->exptime != 0)
+                            itemstats[id].evicted_nonzero++;
+                        STATS_LOCK();
+                        stats.evictions++;
+                        STATS_UNLOCK();
+                    }
+                    do_item_unlink(search);
+                    break;
                 }
-                do_item_unlink(search);
-                break;
             }
+#ifdef USE_SYSTEM_MALLOC
         }
+#endif
+
         it = slabs_alloc(ntotal, id);
         if (it == 0) {
             itemstats[id].outofmemory++;
