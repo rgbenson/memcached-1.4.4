@@ -24,7 +24,7 @@ static void item_unlink_q(item *it);
  */
 #define ITEM_UPDATE_INTERVAL 60
 
-#define SYSTEM_MALLOC_TRIES_MULTIPLIER 10
+#define SYSTEM_MALLOC_TRIES 500
 
 #define LARGEST_ID POWER_LARGEST
 typedef struct {
@@ -100,13 +100,13 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
 
     /* do a quick check if we have any expired items in the tail.. */
 #ifdef USE_SYSTEM_MALLOC
-    int outer_tries = 500;
+    int system_malloc_tries = SYSTEM_MALLOC_TRIES;
 #endif
     int tries = 50;
     item *search;
 
 #ifdef USE_SYSTEM_MALLOC
-    for (freed_bytes = 0; freed_bytes < ntotal && outer_tries > 0; outer_tries--) {
+    for (freed_bytes = 0; freed_bytes < ntotal && system_malloc_tries > 0; system_malloc_tries--) {
 #endif
         for (search = tails[id];
              tries > 0 && search != NULL;
@@ -160,8 +160,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         }
 
 #ifdef USE_SYSTEM_MALLOC
-        outer_tries = 500;
-        for (freed_bytes = 0; freed_bytes < ntotal && outer_tries > 0; outer_tries--) {
+        system_malloc_tries = SYSTEM_MALLOC_TRIES;
+        for (freed_bytes = 0; freed_bytes < ntotal && system_malloc_tries > 0; system_malloc_tries--) {
 #endif
             for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount == 0) {
