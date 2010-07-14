@@ -469,6 +469,8 @@ void  item_stats_sizes(ADD_STAT add_stats, void *c);
 void  item_unlink(item *it);
 void  item_update(item *it);
 
+uint8_t format_suffix(const int flags, const int nbytes, char *suffix);
+
 void STATS_LOCK(void);
 void STATS_UNLOCK(void);
 void threadlocal_stats_reset(void);

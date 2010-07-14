@@ -12,8 +12,8 @@ use Cwd;
 my $builddir = getcwd;
 
 
-@EXPORT = qw(new_memcached sleep mem_get_is mem_gets mem_gets_is mem_stats
-             supports_sasl free_port);
+@EXPORT = qw(new_memcached sleep mem_get_is mem_get_len_is mem_gets mem_gets_is
+             mem_gets_len_is mem_stats supports_sasl free_port);
 
 sub sleep {
     my $n = shift;
@@ -64,6 +64,36 @@ sub mem_get_is {
     }
 }
 
+sub mem_get_len_is {
+    # works on single-line values only.  no newlines in value.
+    my ($sock_opts, $key, $spec_len, $val, $msg) = @_;
+    my $opts = ref $sock_opts eq "HASH" ? $sock_opts : {};
+    my $sock = ref $sock_opts eq "HASH" ? $opts->{sock} : $sock_opts;
+
+    my $expect_flags = $opts->{flags} || 0;
+    my $dval = defined $val ? "'$val'" : "<undef>";
+    $msg ||= "$key == $dval";
+
+    print $sock "get_len $spec_len $key\r\n";
+    if (! defined $val) {
+        my $line = scalar <$sock>;
+        if ($line =~ /^VALUE/) {
+            $line .= scalar(<$sock>) . scalar(<$sock>);
+        }
+        Test::More::is($line, "END\r\n", $msg);
+    } else {
+        my $len = length($val);
+        my $body = scalar(<$sock>);
+        my $expected = "VALUE $key $expect_flags $len\r\n$val\r\nEND\r\n";
+        if (!$body || $body =~ /^END/) {
+            Test::More::is($body, $expected, $msg);
+            return;
+        }
+        $body .= scalar(<$sock>) . scalar(<$sock>);
+        Test::More::is($body, $expected, $msg);
+    }
+}
+
 sub mem_gets {
     # works on single-line values only.  no newlines in value.
     my ($sock_opts, $key) = @_;
@@ -92,6 +122,7 @@ sub mem_gets {
     }
 
 }
+
 sub mem_gets_is {
     # works on single-line values only.  no newlines in value.
     my ($sock_opts, $identifier, $key, $val, $msg) = @_;
@@ -103,6 +134,36 @@ sub mem_gets_is {
     $msg ||= "$key == $dval";
 
     print $sock "gets $key\r\n";
+    if (! defined $val) {
+        my $line = scalar <$sock>;
+        if ($line =~ /^VALUE/) {
+            $line .= scalar(<$sock>) . scalar(<$sock>);
+        }
+        Test::More::is($line, "END\r\n", $msg);
+    } else {
+        my $len = length($val);
+        my $body = scalar(<$sock>);
+        my $expected = "VALUE $key $expect_flags $len $identifier\r\n$val\r\nEND\r\n";
+        if (!$body || $body =~ /^END/) {
+            Test::More::is($body, $expected, $msg);
+            return;
+        }
+        $body .= scalar(<$sock>) . scalar(<$sock>);
+        Test::More::is($body, $expected, $msg);
+    }
+}
+
+sub mem_gets_len_is {
+    # works on single-line values only.  no newlines in value.
+    my ($sock_opts, $identifier, $key, $spec_len, $val, $msg) = @_;
+    my $opts = ref $sock_opts eq "HASH" ? $sock_opts : {};
+    my $sock = ref $sock_opts eq "HASH" ? $opts->{sock} : $sock_opts;
+
+    my $expect_flags = $opts->{flags} || 0;
+    my $dval = defined $val ? "'$val'" : "<undef>";
+    $msg ||= "$key == $dval";
+
+    print $sock "gets_len $spec_len $key\r\n";
     if (! defined $val) {
         my $line = scalar <$sock>;
         if ($line =~ /^VALUE/) {

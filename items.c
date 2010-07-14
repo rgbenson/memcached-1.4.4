@@ -74,18 +74,25 @@ uint64_t get_cas_id(void) {
  *
  * Returns the total size of the header.
  */
+uint8_t item_make_suffix(const int flags, const int nbytes, char *suffix) {
+    return (uint8_t) snprintf(suffix, ITEM_MAX_SUFFIX_LEN, " %d %d\r\n", flags, nbytes - 2);
+}
+
 static size_t item_make_header(const uint8_t nkey, const int flags, const int nbytes,
-                     char *suffix, uint8_t *nsuffix) {
-    /* suffix is defined at 40 chars elsewhere.. */
-    *nsuffix = (uint8_t) snprintf(suffix, 40, " %d %d\r\n", flags, nbytes - 2);
+                               char *suffix, uint8_t *nsuffix) {
+    *nsuffix = item_make_suffix(flags, nbytes, suffix);
     return sizeof(item) + nkey + *nsuffix + nbytes;
+}
+
+uint32_t item_get_flags(item *it) {
+    return (uint32_t)strtoul(ITEM_suffix(it), NULL, 10);
 }
 
 /*@null@*/
 item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
     uint8_t nsuffix;
     item *it = NULL;
-    char suffix[40];
+    char suffix[ITEM_MAX_SUFFIX_LEN];
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
     if (settings.use_cas) {
         ntotal += sizeof(uint64_t);
