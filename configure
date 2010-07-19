@@ -4984,7 +4984,7 @@ if test "x$enable_tcmalloc" = "xyes"
 then
     org_cflags=$CFLAGS
     org_ldflags=$LDFLAGS
-    CFLAGS="-DUSE_SYSTEM_MALLOC"
+    CFLAGS="-DTCMALLOC_ENABLED"
     LDFLAGS="-ltcmalloc"
     if test "$cross_compiling" = yes; then :
   { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
@@ -5007,7 +5007,7 @@ return 0;
 _ACEOF
 if ac_fn_c_try_run "$LINENO"; then :
 
-      CFLAGS="-DUSE_SYSTEM_MALLOC $org_cflags"
+      CFLAGS="-DTCMALLOC_ENABLED $org_cflags"
       LDFLAGS="-ltcmalloc $org_ldflags"
 
 else

@@ -194,6 +194,7 @@ static void settings_init(void) {
     settings.backlog = 1024;
     settings.binding_protocol = negotiating_prot;
     settings.item_size_max = 1024 * 1024; /* The famous 1MB upper limit. */
+    settings.experimental_eviction = false;
 }
 
 /*
@@ -2439,6 +2440,8 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
                 prot_text(settings.binding_protocol));
     APPEND_STAT("auth_enabled_sasl", "%s", settings.sasl ? "yes" : "no");
     APPEND_STAT("item_size_max", "%d", settings.item_size_max);
+    APPEND_STAT("experimental_eviction", "%s",
+                settings.experimental_eviction ? "on" : "off");
 }
 
 static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
@@ -4088,6 +4091,9 @@ static void usage(void) {
 #ifdef ENABLE_SASL
     printf("-S            Turn on Sasl authentication\n");
 #endif
+#ifdef TCMALLOC_ENABLED
+    printf("-E            Use experimental eviction (single slab, evict many)\n");
+#endif
     return;
 }
 
@@ -4307,6 +4313,7 @@ int main (int argc, char **argv) {
           "B:"  /* Binding protocol */
           "I:"  /* Max item size */
           "S"   /* Sasl ON */
+          "E"   /* experimental eviction */
         ))) {
         switch (c) {
         case 'a':
@@ -4468,6 +4475,14 @@ int main (int argc, char **argv) {
             exit(EX_USAGE);
 #endif
             settings.sasl = true;
+            break;
+        case 'E':
+#ifndef TCMALLOC_ENABLED
+            fprintf(stderr, "Experimental eviction requires tcmalloc.\n"
+                    "This server is not built with tcmalloc support.");
+            exit(EX_USAGE);
+#endif
+            settings.experimental_eviction = true;
             break;
         default:
             fprintf(stderr, "Illegal argument \"%c\"\n", c);

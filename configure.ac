@@ -172,14 +172,14 @@ if test "x$enable_tcmalloc" = "xyes"
 then
     org_cflags=$CFLAGS
     org_ldflags=$LDFLAGS
-    CFLAGS="-DUSE_SYSTEM_MALLOC"
+    CFLAGS="-DTCMALLOC_ENABLED"
     LDFLAGS="-ltcmalloc"
     AC_RUN_IFELSE(
       [AC_LANG_PROGRAM([], [dnl
 return 0;
       ])
     ],[
-      CFLAGS="-DUSE_SYSTEM_MALLOC $org_cflags"
+      CFLAGS="-DTCMALLOC_ENABLED $org_cflags"
       LDFLAGS="-ltcmalloc $org_ldflags"
     ],[
     AC_MSG_ERROR([Can't build against tcmalloc])

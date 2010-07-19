@@ -274,6 +274,7 @@ struct settings {
     int backlog;
     int item_size_max;        /* Maximum item size, and upper end for slabs */
     bool sasl;              /* SASL on/off */
+    bool experimental_eviction;
 };
 
 extern struct stats stats;

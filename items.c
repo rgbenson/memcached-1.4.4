@@ -24,7 +24,7 @@ static void item_unlink_q(item *it);
  */
 #define ITEM_UPDATE_INTERVAL 60
 
-#define SYSTEM_MALLOC_TRIES 500
+#define ALLOC_TOTAL_TRIES 500
 
 #define LARGEST_ID POWER_LARGEST
 typedef struct {
@@ -39,6 +39,10 @@ static item *heads[LARGEST_ID];
 static item *tails[LARGEST_ID];
 static itemstats_t itemstats[LARGEST_ID];
 static unsigned int sizes[LARGEST_ID];
+
+static int item_alloc_total_tries_init(void) {
+    return settings.experimental_eviction ? ALLOC_TOTAL_TRIES : 1;
+}
 
 void item_stats_reset(void) {
     pthread_mutex_lock(&cache_lock);
@@ -99,38 +103,39 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         return 0;
 
     /* do a quick check if we have any expired items in the tail.. */
-#ifdef USE_SYSTEM_MALLOC
-    int system_malloc_tries = SYSTEM_MALLOC_TRIES;
-#endif
+    int alloc_total_tries = item_alloc_total_tries_init();
     int tries = 50;
     item *search;
 
-#ifdef USE_SYSTEM_MALLOC
-    for (freed_bytes = 0; freed_bytes < ntotal && system_malloc_tries > 0; system_malloc_tries--) {
-#endif
+    for (freed_bytes = 0;
+         (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
+         alloc_total_tries--) {
         for (search = tails[id];
              tries > 0 && search != NULL;
              tries--, search=search->prev) {
             if (search->refcount == 0 &&
                 (search->exptime != 0 && search->exptime < current_time)) {
                 it = search;
-                /* I don't want to actually free the object, just steal
-                 * the item to avoid to grab the slab mutex twice ;-)
-                 */
-                it->refcount = 1;
-#ifdef USE_SYSTEM_MALLOC
-                freed_bytes += ITEM_ntotal(search);
-#endif
+
+                if (settings.experimental_eviction) {
+                    it->refcount = 0;
+                    freed_bytes += ITEM_ntotal(search);
+                } else {
+                    /* I don't want to actually free the object, just steal
+                     * the item to avoid to grab the slab mutex twice ;-) */
+                    it->refcount = 1;
+                }
+
                 do_item_unlink(it);
+
                 /* Initialize the item block: */
                 it->slabs_clsid = 0;
                 it->refcount = 0;
                 break;
             }
         }
-#ifdef USE_SYSTEM_MALLOC
     }
-#endif
+
     if (it == NULL && (it = slabs_alloc(ntotal, id)) == NULL) {
         /*
         ** Could not find an expired item at the tail, and memory allocation
@@ -159,10 +164,10 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             return NULL;
         }
 
-#ifdef USE_SYSTEM_MALLOC
-        system_malloc_tries = SYSTEM_MALLOC_TRIES;
-        for (freed_bytes = 0; freed_bytes < ntotal && system_malloc_tries > 0; system_malloc_tries--) {
-#endif
+        alloc_total_tries = item_alloc_total_tries_init();
+        for (freed_bytes = 0;
+             (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
+             alloc_total_tries--) {
             for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount == 0) {
                     if (search->exptime == 0 || search->exptime > current_time) {
@@ -174,16 +179,14 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                         stats.evictions++;
                         STATS_UNLOCK();
                     }
-#ifdef USE_SYSTEM_MALLOC
-                    freed_bytes += ITEM_ntotal(search);
-#endif
+                    if (settings.experimental_eviction)
+                        freed_bytes += ITEM_ntotal(search);
+
                     do_item_unlink(search);
                     break;
                 }
             }
-#ifdef USE_SYSTEM_MALLOC
         }
-#endif
 
         it = slabs_alloc(ntotal, id);
         if (it == 0) {
