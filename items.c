@@ -214,7 +214,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         }
     }
 
-    assert(it->slabs_clsid == 0);
+    if (!settings.experimental_eviction) assert(it->slabs_clsid == 0);
 
     it->slabs_clsid = id;
 
