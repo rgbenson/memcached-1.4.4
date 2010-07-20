@@ -54,6 +54,10 @@
 #endif
 #endif
 
+#ifdef ENABLE_CORE_DUMPER
+#include <google/coredumper.h>
+#endif
+
 /*
  * forward declarations
  */
@@ -2444,6 +2448,18 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
                 settings.experimental_eviction ? "on" : "off");
 }
 
+static void process_core_dump(ADD_STAT add_stats, void *c) {
+#ifdef ENABLE_CORE_DUMPER
+    APPEND_STAT("dumping_core", "yes");
+    sprintf(stderr, "process_core_dump(): Core dump initiated");
+    WriteCoreDump("/tmp/memcached.core");
+    sprintf(stderr, "process_core_dump(): Core dump concluded");
+#else
+    APPEND_STAT("dumping_core", "no");
+    sprintf(stderr, "process_core_dump(): Core dumping is not enabled");
+#endif
+}
+
 static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
     const char *subcommand = tokens[SUBCOMMAND_TOKEN].value;
     assert(c != NULL);
@@ -2470,6 +2486,8 @@ static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
         return ;
     } else if (strcmp(subcommand, "settings") == 0) {
         process_stat_settings(&append_stats, c);
+    } else if (strcmp(subcommand, "coredump") == 0) {
+        process_core_dump(&append_stats);
     } else if (strcmp(subcommand, "cachedump") == 0) {
         char *buf;
         unsigned int bytes, id, limit = 0;
