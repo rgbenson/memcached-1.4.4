@@ -717,6 +717,7 @@ enable_dependency_tracking
 enable_sasl
 enable_dtrace
 enable_coverage
+enable_coredumper
 enable_64bit
 enable_tcmalloc
 with_tcmalloc
@@ -1357,6 +1358,8 @@ Optional Features:
   --enable-sasl           Enable SASL authentication
   --enable-dtrace         Enable dtrace probes
   --disable-coverage      Disable code coverage
+  --enable-coredumper     enable core dumper
+                          (http://code.google.com/p/google-coredumper)
   --enable-64bit          build 64bit version
   --enable-tcmalloc       disable the slab allocator and use tcmalloc
   --disable-docs          Disable documentation generation
@@ -4928,6 +4931,17 @@ fi
          PROFILER_FLAGS=-xprofile=tcov
       fi
    fi
+fi
+
+
+# Check whether --enable-coredumper was given.
+if test "${enable_coredumper+set}" = set; then :
+  enableval=$enable_coredumper;
+fi
+
+
+if test "x$enable_coredumper" = "xyes"; then
+   CFLAGS="$CFLAGS -DENABLE_CORE_DUMPER"
 fi
 
 
