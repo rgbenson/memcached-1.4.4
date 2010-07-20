@@ -2450,13 +2450,14 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
 
 static void process_core_dump(ADD_STAT add_stats, void *c) {
 #ifdef ENABLE_CORE_DUMPER
-    APPEND_STAT("dumping_core", "yes");
-    sprintf(stderr, "process_core_dump(): Core dump initiated");
-    WriteCoreDump("/tmp/memcached.core");
-    sprintf(stderr, "process_core_dump(): Core dump concluded");
+    fprintf(stderr, "process_core_dump(): Core dump initiated\n");
+    if (WriteCoreDump("/tmp/memcached.core")) {
+        fprintf(stderr, "process_core_dump(): Core dump succeeded\n");
+    } else {
+        fprintf(stderr, "process_core_dump(): Core dump failed\n");
+    }
 #else
-    APPEND_STAT("dumping_core", "no");
-    sprintf(stderr, "process_core_dump(): Core dumping is not enabled");
+    fprintf(stderr, "process_core_dump(): Core dumping is not enabled\n");
 #endif
 }
 
@@ -2487,7 +2488,7 @@ static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
     } else if (strcmp(subcommand, "settings") == 0) {
         process_stat_settings(&append_stats, c);
     } else if (strcmp(subcommand, "coredump") == 0) {
-        process_core_dump(&append_stats);
+        process_core_dump(&append_stats, c);
     } else if (strcmp(subcommand, "cachedump") == 0) {
         char *buf;
         unsigned int bytes, id, limit = 0;

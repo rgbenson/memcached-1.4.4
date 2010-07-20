@@ -153,6 +153,7 @@ AC_ARG_ENABLE(coredumper,
 
 if test "x$enable_coredumper" = "xyes"; then
    CFLAGS="$CFLAGS -DENABLE_CORE_DUMPER"
+   LDFLAGS="$LDFLAGS -lcoredumper"
 fi
 AC_SUBST(PROFILER_FLAGS)
 
