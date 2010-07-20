@@ -2413,6 +2413,7 @@ static void server_stats(ADD_STAT add_stats, conn *c) {
     APPEND_STAT("limit_maxbytes", "%llu", (unsigned long long)settings.maxbytes);
     APPEND_STAT("accepting_conns", "%u", stats.accepting_conns);
     APPEND_STAT("listen_disabled_num", "%llu", (unsigned long long)stats.listen_disabled_num);
+    APPEND_STAT("allocations", "%llu", (unsigned long long)stats.allocations);
     APPEND_STAT("threads", "%d", settings.num_threads);
     APPEND_STAT("conn_yields", "%llu", (unsigned long long)thread_stats.conn_yields);
     STATS_UNLOCK();

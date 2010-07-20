@@ -314,6 +314,7 @@ int do_item_link(item *it) {
     stats.curr_bytes += ITEM_ntotal(it);
     stats.curr_items += 1;
     stats.total_items += 1;
+    stats.allocations += 1;
     STATS_UNLOCK();
 
     /* Allocate a new CAS ID on link. */
