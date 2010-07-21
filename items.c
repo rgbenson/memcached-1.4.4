@@ -24,8 +24,6 @@ static void item_unlink_q(item *it);
  */
 #define ITEM_UPDATE_INTERVAL 60
 
-#define ALLOC_TOTAL_TRIES 500
-
 #define LARGEST_ID POWER_LARGEST
 typedef struct {
     unsigned int evicted;
@@ -41,7 +39,7 @@ static itemstats_t itemstats[LARGEST_ID];
 static unsigned int sizes[LARGEST_ID];
 
 static int item_alloc_total_tries_init(void) {
-    return settings.experimental_eviction ? ALLOC_TOTAL_TRIES : 1;
+    return settings.experimental_eviction ? settings.experimental_eviction_alloc_tries : 1;
 }
 
 void item_stats_reset(void) {

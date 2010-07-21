@@ -199,6 +199,7 @@ static void settings_init(void) {
     settings.binding_protocol = negotiating_prot;
     settings.item_size_max = 1024 * 1024; /* The famous 1MB upper limit. */
     settings.experimental_eviction = false;
+    settings.experimental_eviction_alloc_tries = 500;
 }
 
 /*
@@ -2447,6 +2448,8 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
     APPEND_STAT("item_size_max", "%d", settings.item_size_max);
     APPEND_STAT("experimental_eviction", "%s",
                 settings.experimental_eviction ? "on" : "off");
+    APPEND_STAT("experimental_eviction_alloc_tries", "%d",
+                settings.experimental_eviction_alloc_tries);
 }
 
 static void process_core_dump(ADD_STAT add_stats, void *c) {
@@ -2538,6 +2541,23 @@ static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
         write_and_free(c, c->stats.buffer, c->stats.offset);
         c->stats.buffer = NULL;
     }
+}
+
+static void process_setting(conn *c, token_t *tokens, const size_t ntokens) {
+   const char *subcommand = tokens[SUBCOMMAND_TOKEN].value;
+   assert(c != NULL);
+
+   if (ntokens == 4) {
+       if (strcmp(subcommand, "experimental_eviction_alloc_tries") == 0) {
+           int newval = atoi(tokens[SUBCOMMAND_TOKEN + 1].value);
+           if (newval > 0) {
+               settings.experimental_eviction_alloc_tries = newval;
+               out_string(c, "OK SET experimental_eviction_alloc_tries");
+           } else {
+               out_string(c, "FAILED SET experimental_eviction_alloc_tries");
+           }
+       }
+   }
 }
 
 /* ntokens is overwritten here... shrug.. */
@@ -3028,6 +3048,10 @@ static void process_command(conn *c, char *command) {
     } else if (ntokens >= 2 && (strcmp(tokens[COMMAND_TOKEN].value, "stats") == 0)) {
 
         process_stat(c, tokens, ntokens);
+
+    } else if (ntokens == 4 && (strcmp(tokens[COMMAND_TOKEN].value, "settings") == 0)) {
+
+        process_setting(c, tokens, ntokens);
 
     } else if (ntokens >= 2 && ntokens <= 4 && (strcmp(tokens[COMMAND_TOKEN].value, "flush_all") == 0)) {
         time_t exptime = 0;

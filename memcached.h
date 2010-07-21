@@ -276,6 +276,7 @@ struct settings {
     int item_size_max;        /* Maximum item size, and upper end for slabs */
     bool sasl;              /* SASL on/off */
     bool experimental_eviction;
+    int experimental_eviction_alloc_tries;
 };
 
 extern struct stats stats;

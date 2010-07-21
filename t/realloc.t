@@ -6,11 +6,12 @@ use Test::More;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
+use Data::Dumper;
 
 my $supports_experimental_eviction = supports_experimental_eviction();
 
 if ($supports_experimental_eviction) {
-    plan tests => 307;
+    plan tests => 313;
 } else {
     plan tests => 1;
     eval {
@@ -83,4 +84,19 @@ for ($key = 100; $key < 150; $key++) {
 my $stats = mem_stats($sock, "items");
 my $fourth_item_count = $stats->{"items:1:number"};
 is($fourth_item_count, $second_item_count,
-   "with longer values, same objects are stored as with long values before")
+   "with longer values, same objects are stored as with long values before");
+
+my $stats = mem_stats($sock, "settings");
+is($stats->{"experimental_eviction"}, "on");
+is($stats->{"experimental_eviction_alloc_tries"}, "500");
+
+print $sock "settings experimental_eviction_alloc_tries 499\r\n";
+is(scalar <$sock>, "OK SET experimental_eviction_alloc_tries\r\n", "set alloc tries valid");
+my $stats = mem_stats($sock, "settings");
+is($stats->{"experimental_eviction_alloc_tries"}, "499");
+
+
+print $sock "settings experimental_eviction_alloc_tries -1\r\n";
+is(scalar <$sock>, "FAILED SET experimental_eviction_alloc_tries\r\n", "set alloc tries invalid");
+my $stats = mem_stats($sock, "settings");
+is($stats->{"experimental_eviction_alloc_tries"}, "499");
