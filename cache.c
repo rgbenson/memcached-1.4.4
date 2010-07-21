@@ -62,8 +62,8 @@ void cache_destroy(cache_t *cache) {
         }
         free(ptr);
     }
-    free(cache->name);
-    free(cache->ptr);
+    free(&cache->name);
+    free(&cache->ptr);
     pthread_mutex_destroy(&cache->mutex);
 }
 
