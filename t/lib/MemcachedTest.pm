@@ -13,7 +13,7 @@ my $builddir = getcwd;
 
 
 @EXPORT = qw(new_memcached sleep mem_get_is mem_gets mem_gets_is mem_stats
-             supports_sasl free_port);
+             supports_sasl supports_experimental_eviction free_port);
 
 sub sleep {
     my $n = shift;
@@ -145,6 +145,12 @@ sub supports_udp {
 sub supports_sasl {
     my $output = `$builddir/memcached-debug -h`;
     return 1 if $output =~ /sasl/i;
+    return 0;
+}
+
+sub supports_experimental_eviction {
+    my $output = `$builddir/memcached-debug -h`;
+    return 1 if $output =~ /experimental eviction/i;
     return 0;
 }
 

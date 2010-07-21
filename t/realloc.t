@@ -2,10 +2,23 @@
 # Test reallocation
 
 use strict;
-use Test::More tests => 307;
+use Test::More;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
+
+my $supports_experimental_eviction = supports_experimental_eviction();
+
+if ($supports_experimental_eviction) {
+    plan tests => 307;
+} else {
+    plan tests => 1;
+    eval {
+        my $server = new_memcached("-E");
+    };
+    ok($@, "Died with illegal -E arg when experimental eviction is not built in.");
+    exit 0;
+}
 
 my $server = new_memcached("-m 3 -E");
 my $sock = $server->sock;
