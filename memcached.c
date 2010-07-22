@@ -54,10 +54,6 @@
 #endif
 #endif
 
-#ifdef ENABLE_CORE_DUMPER
-#include <google/coredumper.h>
-#endif
-
 /*
  * forward declarations
  */
@@ -2452,19 +2448,6 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
                 settings.experimental_eviction_alloc_tries);
 }
 
-static void process_core_dump(ADD_STAT add_stats, void *c) {
-#ifdef ENABLE_CORE_DUMPER
-    fprintf(stderr, "process_core_dump(): Core dump initiated\n");
-    if (WriteCoreDump("/tmp/memcached.core")) {
-        fprintf(stderr, "process_core_dump(): Core dump succeeded\n");
-    } else {
-        fprintf(stderr, "process_core_dump(): Core dump failed\n");
-    }
-#else
-    fprintf(stderr, "process_core_dump(): Core dumping is not enabled\n");
-#endif
-}
-
 static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
     const char *subcommand = tokens[SUBCOMMAND_TOKEN].value;
     assert(c != NULL);
@@ -2491,8 +2474,6 @@ static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
         return ;
     } else if (strcmp(subcommand, "settings") == 0) {
         process_stat_settings(&append_stats, c);
-    } else if (strcmp(subcommand, "coredump") == 0) {
-        process_core_dump(&append_stats, c);
     } else if (strcmp(subcommand, "cachedump") == 0) {
         char *buf;
         unsigned int bytes, id, limit = 0;

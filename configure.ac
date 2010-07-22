@@ -148,16 +148,6 @@ if test "x$enable_coverage" != "xno"; then
 fi
 AC_SUBST(PROFILER_FLAGS)
 
-AC_ARG_ENABLE(coredumper,
-  [AS_HELP_STRING([--enable-coredumper],[enable core dumper (http://code.google.com/p/google-coredumper)])])
-
-if test "x$enable_coredumper" = "xyes"; then
-   CFLAGS="$CFLAGS -DENABLE_CORE_DUMPER"
-   LDFLAGS="$LDFLAGS -lcoredumper"
-fi
-AC_SUBST(PROFILER_FLAGS)
-
-
 AC_ARG_ENABLE(64bit,
   [AS_HELP_STRING([--enable-64bit],[build 64bit version])])
 if test "x$enable_64bit" = "xyes"
