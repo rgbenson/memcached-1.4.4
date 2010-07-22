@@ -191,7 +191,7 @@ enum delta_result_type {
 };
 
 /** Time relative to server start. Smaller than time_t on 64-bit systems. */
-typedef unsigned int rel_time_t;
+typedef uint32_t rel_time_t;
 
 /** Stats stored per slab (and per thread). */
 struct slab_stats {
