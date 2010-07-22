@@ -122,13 +122,13 @@ static enum transmit_result transmit(conn *c);
 
 #define REALTIME_MAXDELTA 60*60*24*30
 
-/*
- * get_len related defines.
- */
+/* get_len related */
 #define NO_ITEM_LEN_SPECIFIED -1U
-#define ITEM_LEN_TOKEN 1
-#define MAX_ITEM_LEN -1U
+#define GET_LEN_TOKEN 1
 
+/* characters used to terminate command responses */
+#define TERMINATION_CHARS "\r\n"
+#define TERMINATION_CHARS_LEN strlen(TERMINATION_CHARS)
 
 /*
  * given time value that's either unix time or delta from current unix time, return
@@ -779,7 +779,7 @@ static void out_string(conn *c, const char *str) {
     }
 
     memcpy(c->wbuf, str, len);
-    memcpy(c->wbuf + len, "\r\n", 2);
+    memcpy(c->wbuf + len, TERMINATION_CHARS, TERMINATION_CHARS_LEN);
     c->wbytes = len + 2;
     c->wcurr = c->wbuf;
 
@@ -803,7 +803,8 @@ static void complete_nread_ascii(conn *c) {
     c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++;
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
-    if (strncmp(ITEM_data(it) + it->nbytes - 2, "\r\n", 2) != 0) {
+    if (strncmp(ITEM_data(it) + it->nbytes - 2,
+                TERMINATION_CHARS, TERMINATION_CHARS_LEN) != 0) {
         out_string(c, "CLIENT_ERROR bad data chunk");
     } else {
       ret = store_item(it, comm, c);
@@ -2556,8 +2557,6 @@ static inline bool create_cas_suffix(conn *c, unsigned valid_key_iter,
  *   key
  *   " " + flags + " " + data length + "\r\n" + data (with \r\n)
  */
-#define TERMINATION_CHARS "\r\n"
-#define TERMINATION_CHARS_LEN strlen(TERMINATION_CHARS)
 static bool respond_get_command(conn *c, unsigned valid_key_iter, item *it,
                                 uint32_t user_spec_len, bool return_cas) {
       char *cas_suffix = NULL;
@@ -2565,10 +2564,7 @@ static bool respond_get_command(conn *c, unsigned valid_key_iter, item *it,
       bool no_length_specified = true;
       uint32_t value_nbytes = it->nbytes - TERMINATION_CHARS_LEN;
 
-      /*
-       * When the user specifies a specified data length * via the
-       * get_len call then we need to obey.
-       */
+      /* Determine if the user has asked for only a fraction of the value. */
       if (unlikely(user_spec_len != NO_ITEM_LEN_SPECIFIED) &&
           user_spec_len < value_nbytes) {
           /*
@@ -2602,7 +2598,7 @@ static bool respond_get_command(conn *c, unsigned valid_key_iter, item *it,
             * Write a new suffix which contains the modified value length
             * information.  Note that the new value_len is 2 plus the user
             * specified length because item_make_suffix() takes into account
-            * the TERMINATION_CHARS_LEN (i.e., "\r\n").
+            * the TERMINATION_CHARS (i.e., "\r\n").
             */
            char suffix_str[ITEM_MAX_SUFFIX_LEN];
            uint32_t value_len = value_nbytes + TERMINATION_CHARS_LEN;
@@ -2745,8 +2741,8 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
 static inline void process_get_len_command(conn *c, token_t *tokens,
                                            size_t ntokens, bool return_cas) {
     uint32_t user_spec_len;
-    if (safe_strtoul(tokens[ITEM_LEN_TOKEN].value, &user_spec_len) &&
-        user_spec_len > 0 && user_spec_len < MAX_ITEM_LEN)  {
+    if (safe_strtoul(tokens[GET_LEN_TOKEN].value, &user_spec_len) &&
+        user_spec_len > 0 && user_spec_len < NO_ITEM_LEN_SPECIFIED)  {
         process_get_command(c, tokens, ntokens, user_spec_len, return_cas);
     } else if (return_cas) { 
         out_string(c, "GETS_LEN bad LEN argument" );
@@ -2941,7 +2937,7 @@ enum delta_result_type do_add_delta(conn *c, item *it, const bool incr,
             return EOM;
         }
         memcpy(ITEM_data(new_it), buf, res);
-        memcpy(ITEM_data(new_it) + res, "\r\n", 2);
+        memcpy(ITEM_data(new_it) + res, TERMINATION_CHARS, TERMINATION_CHARS_LEN);
         item_replace(it, new_it);
         do_item_remove(new_it);       /* release our reference */
     } else { /* replace in-place */
