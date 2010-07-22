@@ -81,7 +81,7 @@ static void slabs_preallocate (const unsigned int maxslabs);
  * 0 means error: can't store such a large object
  */
 
-inline ushort slabs_clsid(const size_t size) {
+inline uint8_t slabs_clsid(const size_t size) {
     if (size == 0)
         return 0;
 
@@ -165,6 +165,8 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc) {
 
 #ifndef DONT_PREALLOC_SLABS
 static void slabs_preallocate (const unsigned int maxslabs) {
+    if (settings.experimental_eviction) return;
+
     int i;
     unsigned int prealloc = 0;
 

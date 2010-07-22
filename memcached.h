@@ -298,11 +298,10 @@ typedef struct _stritem {
     struct _stritem *h_next;    /* hash chain next */
     rel_time_t      time;       /* least recent access */
     rel_time_t      exptime;    /* expire time */
-    int             nbytes;     /* size of data */
-    unsigned short  refcount;
+    uint32_t        nbytes;     /* size of data */
+    uint8_t         refcount;
     uint8_t         nsuffix;    /* length of flags-and-length string */
-    short           it_flags;   /* ITEM_* above */
-    //    short           slabs_clsid;/* which slab class we're in */
+    uint8_t         it_flags;   /* ITEM_* above */
     uint8_t         nkey;       /* key length, w/terminating null and padding */
     void * end[];
     /* if it_flags & ITEM_CAS we have 8 bytes CAS */

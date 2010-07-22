@@ -226,8 +226,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
 }
 
 void item_free(item *it) {
-    size_t ntotal = ITEM_ntotal(it);
-    ushort clsid = slabs_clsid(ntotal);
+    int ntotal = ITEM_ntotal(it);
+    uint8_t clsid = slabs_clsid(ntotal);
     assert((it->it_flags & ITEM_LINKED) == 0);
     assert(it != heads[clsid]);
     assert(it != tails[clsid]);
@@ -253,7 +253,7 @@ bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
 
 static void item_link_q(item *it) { /* item is the new head */
     item **head, **tail;
-    ushort clsid = slabs_clsid(ITEM_ntotal(it));
+    uint8_t clsid = slabs_clsid(ITEM_ntotal(it));
     assert(clsid < LARGEST_ID);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
@@ -272,7 +272,7 @@ static void item_link_q(item *it) { /* item is the new head */
 
 static void item_unlink_q(item *it) {
     item **head, **tail;
-    ushort clsid = slabs_clsid(ITEM_ntotal(it));
+    uint8_t clsid = slabs_clsid(ITEM_ntotal(it));
     assert(clsid < LARGEST_ID);
     head = &heads[clsid];
     tail = &tails[clsid];
