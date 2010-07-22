@@ -16,7 +16,7 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc);
  * 0 means error: can't store such a large object
  */
 
-unsigned int slabs_clsid(const size_t size);
+ushort slabs_clsid(const size_t size);
 
 /** Allocate object of given length. 0 on error */ /*@null@*/
 void *slabs_alloc(const size_t size, unsigned int id);

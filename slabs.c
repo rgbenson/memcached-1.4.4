@@ -81,7 +81,7 @@ static void slabs_preallocate (const unsigned int maxslabs);
  * 0 means error: can't store such a large object
  */
 
-unsigned int slabs_clsid(const size_t size) {
+inline ushort slabs_clsid(const size_t size) {
     if (size == 0)
         return 0;
 
@@ -230,7 +230,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
     }
 
     p = &slabclass[id];
-    assert(p->sl_curr == 0 || ((item *)p->slots[p->sl_curr - 1])->slabs_clsid == 0);
+    assert(p->sl_curr == 0 || slabs_clsid(ITEM_ntotal(((item *)p->slots[p->sl_curr - 1])) == 0));
 
     if (settings.experimental_eviction) {
         if (mem_limit && mem_malloced + size > mem_limit) {
@@ -276,7 +276,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
 static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
     slabclass_t *p;
 
-    assert(((item *)ptr)->slabs_clsid == 0);
+    assert(slabs_clsid(ITEM_ntotal(((item *)ptr))) == 0);
     assert(id >= POWER_SMALLEST && id <= power_largest);
     if (id < POWER_SMALLEST || id > power_largest)
         return;

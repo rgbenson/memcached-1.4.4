@@ -96,9 +96,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         ntotal += sizeof(uint64_t);
     }
 
-    unsigned int id = slabs_clsid(ntotal);
-    if (id == 0)
-        return 0;
+    ushort clsid = slabs_clsid(ntotal);
+    if (clsid == 0) return 0;
 
     /* do a quick check if we have any expired items in the tail.. */
     int alloc_total_tries = item_alloc_total_tries_init();
@@ -108,7 +107,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     for (freed_bytes = 0;
          (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
          alloc_total_tries--) {
-        for (search = tails[id];
+        for (search = tails[clsid];
              tries > 0 && search != NULL;
              tries--, search=search->prev) {
             if (search->refcount == 0 &&
@@ -127,14 +126,13 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 do_item_unlink(it);
 
                 /* Initialize the item block: */
-                it->slabs_clsid = 0;
                 it->refcount = 0;
                 break;
             }
         }
     }
 
-    if (it == NULL && (it = slabs_alloc(ntotal, id)) == NULL) {
+    if (it == NULL && (it = slabs_alloc(ntotal, clsid)) == NULL) {
         /*
         ** Could not find an expired item at the tail, and memory allocation
         ** failed. Try to evict some items!
@@ -146,7 +144,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
          */
 
         if (settings.evict_to_free == 0) {
-            itemstats[id].outofmemory++;
+            itemstats[clsid].outofmemory++;
             return NULL;
         }
 
@@ -157,8 +155,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
          * tries
          */
 
-        if (tails[id] == 0) {
-            itemstats[id].outofmemory++;
+        if (tails[clsid] == 0) {
+            itemstats[clsid].outofmemory++;
             return NULL;
         }
 
@@ -166,13 +164,13 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         for (freed_bytes = 0;
              (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
              alloc_total_tries--) {
-            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+            for (search = tails[clsid]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount == 0) {
                     if (search->exptime == 0 || search->exptime > current_time) {
-                        itemstats[id].evicted++;
-                        itemstats[id].evicted_time = current_time - search->time;
+                        itemstats[clsid].evicted++;
+                        itemstats[clsid].evicted_time = current_time - search->time;
                         if (search->exptime != 0)
-                            itemstats[id].evicted_nonzero++;
+                            itemstats[clsid].evicted_nonzero++;
                         STATS_LOCK();
                         stats.evictions++;
                         STATS_UNLOCK();
@@ -186,9 +184,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             }
         }
 
-        it = slabs_alloc(ntotal, id);
+        it = slabs_alloc(ntotal, clsid);
         if (it == 0) {
-            itemstats[id].outofmemory++;
+            itemstats[clsid].outofmemory++;
             /* Last ditch effort. There is a very rare bug which causes
              * refcount leaks. We've fixed most of them, but it still happens,
              * and it may happen in the future.
@@ -197,26 +195,22 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
              * free it anyway.
              */
             tries = 50;
-            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+            for (search = tails[clsid]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
-                    itemstats[id].tailrepairs++;
+                    itemstats[clsid].tailrepairs++;
                     search->refcount = 0;
                     do_item_unlink(search);
                     break;
                 }
             }
-            it = slabs_alloc(ntotal, id);
+            it = slabs_alloc(ntotal, clsid);
             if (it == 0) {
                 return NULL;
             }
         }
     }
 
-    if (!settings.experimental_eviction) assert(it->slabs_clsid == 0);
-
-    it->slabs_clsid = id;
-
-    assert(it != heads[it->slabs_clsid]);
+    assert(it != heads[clsid]);
 
     it->next = it->prev = it->h_next = 0;
     it->refcount = 1;     /* the caller will have a reference */
@@ -233,15 +227,13 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
 
 void item_free(item *it) {
     size_t ntotal = ITEM_ntotal(it);
-    unsigned int clsid;
+    ushort clsid = slabs_clsid(ntotal);
     assert((it->it_flags & ITEM_LINKED) == 0);
-    assert(it != heads[it->slabs_clsid]);
-    assert(it != tails[it->slabs_clsid]);
+    assert(it != heads[clsid]);
+    assert(it != tails[clsid]);
     assert(it->refcount == 0);
 
     /* so slab size changer can tell later if item is already free or not */
-    clsid = it->slabs_clsid;
-    it->slabs_clsid = 0;
     it->it_flags |= ITEM_SLABBED;
     DEBUG_REFCNT(it, 'F');
     slabs_free(it, ntotal, clsid);
@@ -261,11 +253,12 @@ bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
 
 static void item_link_q(item *it) { /* item is the new head */
     item **head, **tail;
-    assert(it->slabs_clsid < LARGEST_ID);
+    ushort clsid = slabs_clsid(ITEM_ntotal(it));
+    assert(clsid < LARGEST_ID);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
-    head = &heads[it->slabs_clsid];
-    tail = &tails[it->slabs_clsid];
+    head = &heads[clsid];
+    tail = &tails[clsid];
     assert(it != *head);
     assert((*head && *tail) || (*head == 0 && *tail == 0));
     it->prev = 0;
@@ -273,15 +266,16 @@ static void item_link_q(item *it) { /* item is the new head */
     if (it->next) it->next->prev = it;
     *head = it;
     if (*tail == 0) *tail = it;
-    sizes[it->slabs_clsid]++;
+    sizes[clsid]++;
     return;
 }
 
 static void item_unlink_q(item *it) {
     item **head, **tail;
-    assert(it->slabs_clsid < LARGEST_ID);
-    head = &heads[it->slabs_clsid];
-    tail = &tails[it->slabs_clsid];
+    ushort clsid = slabs_clsid(ITEM_ntotal(it));
+    assert(clsid < LARGEST_ID);
+    head = &heads[clsid];
+    tail = &tails[clsid];
 
     if (*head == it) {
         assert(it->prev == 0);
@@ -296,7 +290,7 @@ static void item_unlink_q(item *it) {
 
     if (it->next) it->next->prev = it->prev;
     if (it->prev) it->prev->next = it->next;
-    sizes[it->slabs_clsid]--;
+    sizes[clsid]--;
     return;
 }
 
