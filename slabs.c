@@ -88,7 +88,6 @@ unsigned int slabs_clsid(const size_t size) {
     if (settings.experimental_eviction)
         return 1; /* everything goes in slab 1 */
 
-
     int res = POWER_SMALLEST;
     while (size > slabclass[res].size)
         if (res++ == power_largest)     /* won't fit in the biggest slab */
