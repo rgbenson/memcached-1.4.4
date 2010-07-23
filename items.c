@@ -106,7 +106,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     item *search;
 
     for (freed_bytes = 0;
-         (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
+         (!settings.experimental_eviction || freed_bytes < ntotal) && alloc_total_tries > 0;
          alloc_total_tries--) {
         for (search = tails[id];
              tries > 0 && search != NULL;
@@ -164,7 +164,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
 
         alloc_total_tries = item_alloc_total_tries_init();
         for (freed_bytes = 0;
-             (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
+             (!settings.experimental_eviction || freed_bytes < ntotal) && alloc_total_tries > 0;
              alloc_total_tries--) {
             for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount == 0) {
@@ -212,7 +212,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         }
     }
 
-    if (!settings.experimental_eviction) assert(it->slabs_clsid == 0);
+    assert(settings.experimental_eviction || it->slabs_clsid == 0);
 
     it->slabs_clsid = id;
 

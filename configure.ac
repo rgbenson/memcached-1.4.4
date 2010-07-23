@@ -148,6 +148,7 @@ if test "x$enable_coverage" != "xno"; then
 fi
 AC_SUBST(PROFILER_FLAGS)
 
+
 AC_ARG_ENABLE(64bit,
   [AS_HELP_STRING([--enable-64bit],[build 64bit version])])
 if test "x$enable_64bit" = "xyes"
@@ -164,110 +165,6 @@ return sizeof(void*) == 8 ? 0 : 1;
     AC_MSG_ERROR([Don't know how to build a 64-bit object.])
     ])
 fi
-
-AC_ARG_ENABLE(tcmalloc,
-  [AS_HELP_STRING([--enable-tcmalloc],[disable the slab allocator and use tcmalloc])])
-if test "x$enable_tcmalloc" = "xyes"
-then
-    org_cflags=$CFLAGS
-    org_ldflags=$LDFLAGS
-    CFLAGS="-DTCMALLOC_ENABLED"
-    LDFLAGS="-ltcmalloc"
-    AC_RUN_IFELSE(
-      [AC_LANG_PROGRAM([], [dnl
-return 0;
-      ])
-    ],[
-      CFLAGS="-DTCMALLOC_ENABLED $org_cflags"
-      LDFLAGS="-ltcmalloc $org_ldflags"
-    ],[
-    AC_MSG_ERROR([Can't build against tcmalloc])
-    ])
-fi
-
-trytcmallocdir=""
-AC_ARG_WITH(tcmalloc,
-       [  --with-tcmalloc=PATH     Specify path to tcmalloc installation ],
-       [
-                if test "x$withval" != "xno" ; then
-                        trytcmallocdir=$withval
-                fi
-       ]
-)
-
-dnl ------------------
-dnl tcmalloc detection
-
-TCMALLOC_URL=http://code.google.com/p/google-perftools
-
-AC_CACHE_CHECK([for tcmalloc directory], ac_cv_tcmalloc_dir, [
-  saved_LIBS="$LIBS"
-  saved_LDFLAGS="$LDFLAGS"
-  saved_CPPFLAGS="$CPPFLAGS"
-  tcm_found=no
-  for tcmdir in $trytcmallocdir "" $prefix /usr/local ; do
-    LDFLAGS="$saved_LDFLAGS"
-    LIBS="$saved_LIBS -ltcmalloc"
-
-    # Skip the directory if it isn't there.
-    if test ! -z "$tcmdir" -a ! -d "$tcmdir" ; then
-       continue;
-    fi
-    if test ! -z "$tcmdir" ; then
-      if test -d "$tcmdir/lib" ; then
-        LDFLAGS="-L$tcmdir/lib $LDFLAGS"
-      else
-        LDFLAGS="-L$tcmdir $LDFLAGS"
-      fi
-      if test -d "$tcmdir/include" ; then
-        CPPFLAGS="-I$tcmdir/include $CPPFLAGS"
-      else
-        CPPFLAGS="-I$tcmdir $CPPFLAGS"
-      fi
-    fi
-    # Can I compile and link it?
-    AC_TRY_LINK([#include <sys/time.h>
-#include <sys/types.h>],
-       [ return malloc(sizeof(int)) ],
-       [ tcmalloc_linked=yes ], [ tcmalloc_linked=no ])
-    if test $tcmalloc_linked = yes; then
-       if test ! -z "$tcmdir" ; then
-         ac_cv_tcmalloc_dir=$tcmdir
-       else
-         ac_cv_tcmalloc_dir="(system)"
-       fi
-       tcm_found=yes
-       break
-    fi
-  done
-  LIBS="$saved_LIBS"
-  LDFLAGS="$saved_LDFLAGS"
-  CPPFLAGS="$saved_CPPFLAGS"
-  if test $tcm_found = no ; then
-    AC_MSG_ERROR([tcmalloc is required.  You can get it from $TCMALLOC_URL
-
-      If it's already installed, specify its path using --with-tcmalloc=/dir/
-])
-  fi
-])
-LIBS="$LIBS -ltcmalloc"
-if test $ac_cv_tcmalloc_dir != "(system)"; then
-  if test -d "$ac_cv_tcmalloc_dir/lib" ; then
-    LDFLAGS="-L$ac_cv_tcmalloc_dir/lib $LDFLAGS"
-    le_libdir="$ac_cv_tcmalloc_dir/lib"
-  else
-    LDFLAGS="-L$ac_cv_tcmalloc_dir $LDFLAGS"
-    le_libdir="$ac_cv_tcmalloc_dir"
-  fi
-  if test -d "$ac_cv_tcmalloc_dir/include" ; then
-    CPPFLAGS="-I$ac_cv_tcmalloc_dir/include $CPPFLAGS"
-  else
-    CPPFLAGS="-I$ac_cv_tcmalloc_dir $CPPFLAGS"
-  fi
-fi
-
-dnl ----------------------------------------------------------------------------
-
 
 trylibeventdir=""
 AC_ARG_WITH(libevent,

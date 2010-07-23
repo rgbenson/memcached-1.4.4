@@ -284,11 +284,11 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
     MEMCACHED_SLABS_FREE(size, id, ptr);
     p = &slabclass[id];
 
-    if (settings.experimental_eviction) {
-        mem_malloced -= size;
-        free(ptr);
-        return;
-    }
+#ifdef USE_SYSTEM_MALLOC
+    mem_malloced -= size;
+    free(ptr);
+    return;
+#endif
 
     if (p->sl_curr == p->sl_total) { /* need more space on the free list */
         int new_size = (p->sl_total != 0) ? p->sl_total * 2 : 16;  /* 16 is arbitrary */

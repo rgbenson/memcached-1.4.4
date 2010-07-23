@@ -82,7 +82,7 @@ AUTOMAKE = ${SHELL} /Users/wilhelm/Code/memcached-1.4.4/missing --run automake-1
 AWK = awk
 CC = gcc -std=gnu99
 CCDEPMODE = depmode=gcc3
-CFLAGS = -DTCMALLOC_ENABLED -g -O2 -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
+CFLAGS = -DUSE_SYSTEM_MALLOC -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
 CPP = gcc -E
 CPPFLAGS = 
 CYGPATH_W = echo
@@ -102,9 +102,9 @@ INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
-LDFLAGS = -ltcmalloc 
+LDFLAGS = -L/Users/wilhelm/opt/lib -ltcmalloc
 LIBOBJS = 
-LIBS =  -ltcmalloc -levent
+LIBS =  -levent
 LTLIBOBJS = 
 MAKEINFO = ${SHELL} /Users/wilhelm/Code/memcached-1.4.4/missing --run makeinfo
 MKDIR_P = .././install-sh -c -d

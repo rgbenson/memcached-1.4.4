@@ -718,8 +718,6 @@ enable_sasl
 enable_dtrace
 enable_coverage
 enable_64bit
-enable_tcmalloc
-with_tcmalloc
 with_libevent
 enable_docs
 '
@@ -1358,13 +1356,11 @@ Optional Features:
   --enable-dtrace         Enable dtrace probes
   --disable-coverage      Disable code coverage
   --enable-64bit          build 64bit version
-  --enable-tcmalloc       disable the slab allocator and use tcmalloc
   --disable-docs          Disable documentation generation
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
-  --with-tcmalloc=PATH     Specify path to tcmalloc installation
   --with-libevent=PATH     Specify path to libevent installation
 
 Some influential environment variables:
@@ -4931,6 +4927,7 @@ fi
 fi
 
 
+
 # Check whether --enable-64bit was given.
 if test "${enable_64bit+set}" = set; then :
   enableval=$enable_64bit;
@@ -4973,159 +4970,6 @@ rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
 fi
 
 fi
-
-# Check whether --enable-tcmalloc was given.
-if test "${enable_tcmalloc+set}" = set; then :
-  enableval=$enable_tcmalloc;
-fi
-
-if test "x$enable_tcmalloc" = "xyes"
-then
-    org_cflags=$CFLAGS
-    org_ldflags=$LDFLAGS
-    CFLAGS="-DTCMALLOC_ENABLED"
-    LDFLAGS="-ltcmalloc"
-    if test "$cross_compiling" = yes; then :
-  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
-$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
-as_fn_error "cannot run test program while cross compiling
-See \`config.log' for more details." "$LINENO" 5; }
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-return 0;
-
-  ;
-  return 0;
-}
-
-_ACEOF
-if ac_fn_c_try_run "$LINENO"; then :
-
-      CFLAGS="-DTCMALLOC_ENABLED $org_cflags"
-      LDFLAGS="-ltcmalloc $org_ldflags"
-
-else
-
-    as_fn_error "Can't build against tcmalloc" "$LINENO" 5
-
-fi
-rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
-  conftest.$ac_objext conftest.beam conftest.$ac_ext
-fi
-
-fi
-
-trytcmallocdir=""
-
-# Check whether --with-tcmalloc was given.
-if test "${with_tcmalloc+set}" = set; then :
-  withval=$with_tcmalloc;
-                if test "x$withval" != "xno" ; then
-                        trytcmallocdir=$withval
-                fi
-
-
-fi
-
-
-
-TCMALLOC_URL=http://code.google.com/p/google-perftools
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for tcmalloc directory" >&5
-$as_echo_n "checking for tcmalloc directory... " >&6; }
-if test "${ac_cv_tcmalloc_dir+set}" = set; then :
-  $as_echo_n "(cached) " >&6
-else
-
-  saved_LIBS="$LIBS"
-  saved_LDFLAGS="$LDFLAGS"
-  saved_CPPFLAGS="$CPPFLAGS"
-  tcm_found=no
-  for tcmdir in $trytcmallocdir "" $prefix /usr/local ; do
-    LDFLAGS="$saved_LDFLAGS"
-    LIBS="$saved_LIBS -ltcmalloc"
-
-    # Skip the directory if it isn't there.
-    if test ! -z "$tcmdir" -a ! -d "$tcmdir" ; then
-       continue;
-    fi
-    if test ! -z "$tcmdir" ; then
-      if test -d "$tcmdir/lib" ; then
-        LDFLAGS="-L$tcmdir/lib $LDFLAGS"
-      else
-        LDFLAGS="-L$tcmdir $LDFLAGS"
-      fi
-      if test -d "$tcmdir/include" ; then
-        CPPFLAGS="-I$tcmdir/include $CPPFLAGS"
-      else
-        CPPFLAGS="-I$tcmdir $CPPFLAGS"
-      fi
-    fi
-    # Can I compile and link it?
-    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <sys/time.h>
-#include <sys/types.h>
-int
-main ()
-{
- return malloc(sizeof(int))
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-   tcmalloc_linked=yes
-else
-   tcmalloc_linked=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-    if test $tcmalloc_linked = yes; then
-       if test ! -z "$tcmdir" ; then
-         ac_cv_tcmalloc_dir=$tcmdir
-       else
-         ac_cv_tcmalloc_dir="(system)"
-       fi
-       tcm_found=yes
-       break
-    fi
-  done
-  LIBS="$saved_LIBS"
-  LDFLAGS="$saved_LDFLAGS"
-  CPPFLAGS="$saved_CPPFLAGS"
-  if test $tcm_found = no ; then
-    as_fn_error "tcmalloc is required.  You can get it from $TCMALLOC_URL
-
-      If it's already installed, specify its path using --with-tcmalloc=/dir/
-" "$LINENO" 5
-  fi
-
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_tcmalloc_dir" >&5
-$as_echo "$ac_cv_tcmalloc_dir" >&6; }
-LIBS="$LIBS -ltcmalloc"
-if test $ac_cv_tcmalloc_dir != "(system)"; then
-  if test -d "$ac_cv_tcmalloc_dir/lib" ; then
-    LDFLAGS="-L$ac_cv_tcmalloc_dir/lib $LDFLAGS"
-    le_libdir="$ac_cv_tcmalloc_dir/lib"
-  else
-    LDFLAGS="-L$ac_cv_tcmalloc_dir $LDFLAGS"
-    le_libdir="$ac_cv_tcmalloc_dir"
-  fi
-  if test -d "$ac_cv_tcmalloc_dir/include" ; then
-    CPPFLAGS="-I$ac_cv_tcmalloc_dir/include $CPPFLAGS"
-  else
-    CPPFLAGS="-I$ac_cv_tcmalloc_dir $CPPFLAGS"
-  fi
-fi
-
-
 
 trylibeventdir=""
 

@@ -122,6 +122,8 @@ static enum transmit_result transmit(conn *c);
 
 #define REALTIME_MAXDELTA 60*60*24*30
 
+#define MAX_EXPERIMENTAL_EVICTION_ALLOC_TRIES 10000
+
 /*
  * given time value that's either unix time or delta from current unix time, return
  * unix time. Use the fact that delta can't exceed one month (and real time value can't
@@ -2530,12 +2532,17 @@ static void process_setting(conn *c, token_t *tokens, const size_t ntokens) {
 
    if (ntokens == 4) {
        if (strcmp(subcommand, "experimental_eviction_alloc_tries") == 0) {
-           int newval = atoi(tokens[SUBCOMMAND_TOKEN + 1].value);
-           if (newval > 0) {
+           uint32_t newval;
+           if (! safe_strtoul(tokens[SUBCOMMAND_TOKEN + 1].value, &newval)) {
+               out_string(c, "CLIENT_ERROR value must be numeric");
+               return;
+           }
+
+           if (newval > 0 && newval < MAX_EXPERIMENTAL_EVICTION_ALLOC_TRIES) {
                settings.experimental_eviction_alloc_tries = newval;
                out_string(c, "OK SET experimental_eviction_alloc_tries");
            } else {
-               out_string(c, "FAILED SET experimental_eviction_alloc_tries");
+               out_string(c, "CLIENT_ERROR value out of range");
            }
        }
    }
@@ -4116,7 +4123,7 @@ static void usage(void) {
 #ifdef ENABLE_SASL
     printf("-S            Turn on Sasl authentication\n");
 #endif
-#ifdef TCMALLOC_ENABLED
+#ifdef USE_SYSTEM_MALLOC
     printf("-E            Use experimental eviction (single slab, evict many)\n");
 #endif
     return;
@@ -4502,13 +4509,14 @@ int main (int argc, char **argv) {
             settings.sasl = true;
             break;
         case 'E':
-#ifndef TCMALLOC_ENABLED
+#ifndef USE_SYSTEM_MALLOC
             fprintf(stderr, "Experimental eviction requires tcmalloc.\n"
-                    "This server is not built with tcmalloc support.");
+                    "This server is not built with tcmalloc support.\n");
             exit(EX_USAGE);
-#endif
+#else
             settings.experimental_eviction = true;
             break;
+#endif
         default:
             fprintf(stderr, "Illegal argument \"%c\"\n", c);
             return 1;

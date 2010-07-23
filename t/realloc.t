@@ -11,7 +11,7 @@ use Data::Dumper;
 my $supports_experimental_eviction = supports_experimental_eviction();
 
 if ($supports_experimental_eviction) {
-    plan tests => 313;
+    plan tests => 315;
 } else {
     plan tests => 1;
     eval {
@@ -96,7 +96,13 @@ my $stats = mem_stats($sock, "settings");
 is($stats->{"experimental_eviction_alloc_tries"}, "499");
 
 
-print $sock "settings experimental_eviction_alloc_tries -1\r\n";
-is(scalar <$sock>, "FAILED SET experimental_eviction_alloc_tries\r\n", "set alloc tries invalid");
+print $sock "settings experimental_eviction_alloc_tries 0\r\n";
+is(scalar <$sock>, "CLIENT_ERROR value out of range\r\n", "set alloc tries invalid");
 my $stats = mem_stats($sock, "settings");
 is($stats->{"experimental_eviction_alloc_tries"}, "499");
+
+print $sock "settings experimental_eviction_alloc_tries boosh\r\n";
+is(scalar <$sock>, "CLIENT_ERROR value must be numeric\r\n", "set alloc tries nonnumeric fails");
+
+print $sock "settings experimental_eviction_alloc_tries 31337\r\n";
+is(scalar <$sock>, "CLIENT_ERROR value out of range\r\n", "set alloc tries too high fails");
