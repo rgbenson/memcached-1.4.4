@@ -3,7 +3,7 @@
 /* Set to nonzero if you want to include DTRACE */
 #undef ENABLE_DTRACE
 
-/* Set to nonzero if you want to include SASL */
+/* Set to nonzero if you want to enable experimental eviction */
 #undef ENABLE_SASL
 
 /* machine is bigendian */
@@ -92,9 +92,6 @@
 
 /* Define to the one symbol short name of this package. */
 #undef PACKAGE_TARNAME
-
-/* Define to the home page for this package. */
-#undef PACKAGE_URL
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION

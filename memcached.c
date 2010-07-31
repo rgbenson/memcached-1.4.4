@@ -4124,7 +4124,7 @@ static void usage(void) {
     printf("-S            Turn on Sasl authentication\n");
 #endif
 
-#ifdef USE_SYSTEM_MALLOC
+#ifdef ENABLE_EXPERIMENTAL_EVICTION
     printf("-E            Use experimental eviction (single slab, evict many)\n");
 #endif
 
@@ -4511,13 +4511,12 @@ int main (int argc, char **argv) {
             settings.sasl = true;
             break;
         case 'E':
-#ifndef USE_SYSTEM_MALLOC
-            fprintf(stderr, "Experimental eviction requires tcmalloc.\n"
-                    "This server is not built with tcmalloc support.\n");
-            exit(EX_USAGE);
-#else
+#ifdef ENABLE_EXPERIMENTAL_EVCITION
             settings.experimental_eviction = true;
             break;
+#else
+            fprintf(stderr, "This server is not built with experimental eviction support.\n");
+            exit(EX_USAGE);
 #endif
         default:
             fprintf(stderr, "Illegal argument \"%c\"\n", c);
