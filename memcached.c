@@ -4123,9 +4123,11 @@ static void usage(void) {
 #ifdef ENABLE_SASL
     printf("-S            Turn on Sasl authentication\n");
 #endif
+
 #ifdef USE_SYSTEM_MALLOC
     printf("-E            Use experimental eviction (single slab, evict many)\n");
 #endif
+
     return;
 }
 

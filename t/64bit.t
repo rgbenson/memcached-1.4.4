@@ -3,6 +3,7 @@
 use strict;
 use Test::More;
 use FindBin qw($Bin);
+use Data::Dumper;
 use lib "$Bin/lib";
 use MemcachedTest;
 

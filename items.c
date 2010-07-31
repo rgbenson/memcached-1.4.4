@@ -39,7 +39,7 @@ static itemstats_t itemstats[LARGEST_ID];
 static unsigned int sizes[LARGEST_ID];
 
 static int item_alloc_total_tries_init(void) {
-    return settings.experimental_eviction ? settings.experimental_eviction_alloc_tries : 1;
+    return settings.experimental_eviction == true ? settings.experimental_eviction_alloc_tries : 1;
 }
 
 void item_stats_reset(void) {
@@ -106,7 +106,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     item *search;
 
     for (freed_bytes = 0;
-         (!settings.experimental_eviction || freed_bytes < ntotal) && alloc_total_tries > 0;
+         (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
          alloc_total_tries--) {
         for (search = tails[id];
              tries > 0 && search != NULL;
@@ -164,7 +164,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
 
         alloc_total_tries = item_alloc_total_tries_init();
         for (freed_bytes = 0;
-             (!settings.experimental_eviction || freed_bytes < ntotal) && alloc_total_tries > 0;
+             (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
              alloc_total_tries--) {
             for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount == 0) {
@@ -212,7 +212,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         }
     }
 
-    assert(settings.experimental_eviction || it->slabs_clsid == 0);
+    if (!settings.experimental_eviction) {
+        assert (it->slabs_clsid == 0);
+    }
 
     it->slabs_clsid = id;
 

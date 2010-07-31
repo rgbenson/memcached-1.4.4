@@ -84,7 +84,7 @@ CC = gcc -std=gnu99
 CCDEPMODE = depmode=gcc3
 CFLAGS = -DUSE_SYSTEM_MALLOC -pthread -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
 CPP = gcc -E
-CPPFLAGS = 
+CPPFLAGS = -I/Users/wilhelm/opt/include 
 CYGPATH_W = echo
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
@@ -102,7 +102,7 @@ INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
-LDFLAGS = -L/Users/wilhelm/opt/lib -ltcmalloc
+LDFLAGS = -L/Users/wilhelm/opt/lib -L/Users/wilhelm/opt/lib -ltcmalloc
 LIBOBJS = 
 LIBS =  -levent
 LTLIBOBJS = 
@@ -165,7 +165,7 @@ mandir = ${datarootdir}/man
 mkdir_p = $(top_builddir)/./install-sh -c -d
 oldincludedir = /usr/include
 pdfdir = ${docdir}
-prefix = /usr/local
+prefix = /Users/wilhelm/opt
 program_transform_name = s,x,x,
 psdir = ${docdir}
 sbindir = ${exec_prefix}/sbin

@@ -82,11 +82,11 @@ static void slabs_preallocate (const unsigned int maxslabs);
  */
 
 unsigned int slabs_clsid(const size_t size) {
-    if (size == 0)
+    if (size == 0) {
         return 0;
-
-    if (settings.experimental_eviction)
-        return 1; /* everything goes in slab 1 */
+    } else if (settings.experimental_eviction) {
+        return 1;
+    }
 
     int res = POWER_SMALLEST;
     while (size > slabclass[res].size)
