@@ -13,8 +13,7 @@ my $builddir = getcwd;
 
 
 @EXPORT = qw(new_memcached sleep mem_get_is mem_gets mem_gets_is mem_stats
-             supports_sasl supports_experimental_eviction testing_experimental_eviction
-             free_port);
+             supports_sasl testing_experimental_eviction free_port);
 
 sub testing_experimental_eviction {
     return $ENV{'TEST_EXPERIMENTAL_EVICTION'} eq "true";
@@ -153,12 +152,6 @@ sub supports_sasl {
     return 0;
 }
 
-sub supports_experimental_eviction {
-    my $output = `$builddir/memcached-debug -h`;
-    return 1 if $output =~ /experimental eviction/i;
-    return 0;
-}
-
 sub new_memcached {
     my ($args, $passed_port) = @_;
     my $port = $passed_port || free_port();
@@ -247,13 +240,6 @@ sub DESTROY {
 sub stop {
     my $self = shift;
     kill 15, $self->{pid};
-}
-
-sub debug {
-    # print "Running leaks";
-    # exec "leaks memcached-debug";
-    # print "Leaks finished. Press enter.";
-    # my $z = readline();
 }
 
 sub host { $_[0]{host} }

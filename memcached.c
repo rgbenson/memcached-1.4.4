@@ -4511,7 +4511,6 @@ int main (int argc, char **argv) {
             settings.sasl = true;
             break;
         case 'E':
-            fprintf(stderr, "\n\n*** EXPERIMENTAL EVICTION ENABLED ***\n\n");
             settings.experimental_eviction = true;
             break;
         default:

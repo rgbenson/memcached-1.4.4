@@ -31,5 +31,4 @@ for ($key = 10; $key < 20; $key++) {
 my $second_stats  = mem_stats($sock, "slabs");
 my $second_malloc = $second_stats->{total_malloced};
 
-$server->debug();
 cmp_ok($second_malloc, '<=', $first_malloc + 10, "memory doesn't grow significantly");

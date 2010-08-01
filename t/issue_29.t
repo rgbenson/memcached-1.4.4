@@ -11,9 +11,7 @@ my $server = new_memcached();
 my $sock = $server->sock;
 
 if (testing_experimental_eviction()) {
-    plan tests => 1;
-    ok("we don't use chunks");
-    exit 0;
+    plan skip_all => "experimental eviction has no chunks";
 } else {
     plan tests => 4;
 }
