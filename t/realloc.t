@@ -8,17 +8,10 @@ use lib "$Bin/lib";
 use MemcachedTest;
 use Data::Dumper;
 
-my $supports_experimental_eviction = supports_experimental_eviction();
-
-if ($supports_experimental_eviction) {
+if (testing_experimental_eviction()) {
     plan tests => 315;
 } else {
-    plan tests => 1;
-    eval {
-        my $server = new_memcached("-E");
-    };
-    ok($@, "Died with illegal -E arg when experimental eviction is not built in.");
-    exit 0;
+    plan skip_all => 'Experimental eviction is not under test';
 }
 
 my $server = new_memcached("-m 3 -E");

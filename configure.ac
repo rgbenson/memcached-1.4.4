@@ -132,7 +132,7 @@ if test "x$enable_coverage" != "xno"; then
          AC_CHECK_LIB(gcov, main,
                     [
                       PROFILER_FLAGS="-fprofile-arcs -ftest-coverage"
-                      PROFILER_LDFLAGS="-lgcov -ltcmalloc"
+                      PROFILER_LDFLAGS="-lgcov"
                     ], [
                       PROFILER_FLAGS=
                       PROFILER_LDFLAGS=

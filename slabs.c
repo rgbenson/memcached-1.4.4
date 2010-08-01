@@ -246,7 +246,6 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
             memset(ret, 0, size);
             mem_malloced += size;
             MEMCACHED_SLABS_ALLOCATE(size, id, 0, ret);
-
 #ifdef HELLA_DEBUG
             fprintf(stderr, "allocated %zd bytes at %p (%zd total)\n", size, (void *)ret, mem_malloced);
 #endif

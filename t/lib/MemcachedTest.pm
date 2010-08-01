@@ -176,13 +176,14 @@ sub new_memcached {
     }
 
     my $udpport = free_port("udp");
+    $args .= " -p $port";
 
     if (supports_udp()) {
         $args .= " -U $udpport";
     }
 
-    if ($ENV{'TEST_EXPERIMENTAL_EVICTION'} == 'true') {
-        $args .= " -p $port -E";
+    if ($ENV{'TEST_EXPERIMENTAL_EVICTION'} eq "true") {
+        $args .= " -E";
     }
 
     if ($< == 0) {
@@ -196,7 +197,7 @@ sub new_memcached {
     croak("memcached binary not executable\n") unless -x _;
 
     unless ($childpid) {
-        exec "$builddir/timedrun 600 env HEAPCHECK=strict $exe $args";
+        exec "$builddir/timedrun 600 $exe $args";
         exit; # never gets here.
     }
 
@@ -249,8 +250,10 @@ sub stop {
 }
 
 sub debug {
-    my $self = shift;
-    exec "gdb -p $self->{pid}";
+    # print "Running leaks";
+    # exec "leaks memcached-debug";
+    # print "Leaks finished. Press enter.";
+    # my $z = readline();
 }
 
 sub host { $_[0]{host} }

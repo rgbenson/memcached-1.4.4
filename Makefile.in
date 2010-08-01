@@ -1191,7 +1191,7 @@ test:	memcached-debug sizes testapp
 	$(srcdir)/sizes
 	$(srcdir)/testapp
 	echo "*** Testing with experimental eviction disabled"
-	env TEST_EXPERIMENTAL_EVICTION=false prove $(srcdir)/t
+	env prove $(srcdir)/t
 	echo "*** Testing with experimental eviction enabled"
 	env TEST_EXPERIMENTAL_EVICTION=true prove $(srcdir)/t
 	@if test `basename $(PROFILER)` = "gcov"; then \

@@ -19,6 +19,11 @@ for ($key = 0; $key < 10; $key++) {
 
 my $first_stats = mem_stats($sock, "slabs");
 
-my $req = $first_stats->{"total_malloced"};
-ok ($req == "640" || $req == "800", "Check allocated size");
+if (testing_experimental_eviction()) {
+    my $req = $first_stats->{"total_malloced"};
+    ok ($req == "640" || $req == "800", "Check allocated size");
+} else {
+    my $req = $first_stats->{"1:mem_requested"};
+    ok ($req == "640" || $req == "800", "Check allocated size");
+}
 
