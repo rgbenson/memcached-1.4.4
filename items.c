@@ -105,9 +105,6 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     int tries = item_alloc_tries_init();
     item *search;
 
-#ifdef HELLA_DEBUG
-    fprintf(stderr, "START TTL EVICT\n");
-#endif
     for (search = tails[id];
          tries > 0 && search != NULL;
          tries--, search=search->prev) {
@@ -119,9 +116,6 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 it->refcount = 0;
                 do_item_unlink(it);
                 freed_bytes += ITEM_ntotal(it);
-#ifdef HELLA_DEBUG
-                fprintf(stderr, "EXP TTL EVICT %zd of %zd\n", freed_bytes, ntotal);
-#endif
                 it = NULL;
 
                 if (freed_bytes >= ntotal) {
@@ -170,50 +164,24 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             return NULL;
         }
 
-#ifdef HELLA_DEBUG
-        fprintf(stderr, "START LRU EVICT\n");
-#endif
         for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
             if (search->refcount == 0) {
                 if (search->exptime == 0 || search->exptime > current_time) {
-#ifdef HELLA_DEBUG
-                    fprintf(stderr, "LRU EVICT VISIT %p\n", (void *)search);
-#endif
-
                     itemstats[id].evicted++;
                     itemstats[id].evicted_time = current_time - search->time;
                     if (search->exptime != 0)
                         itemstats[id].evicted_nonzero++;
 
-#ifdef HELLA_DEBUG
-                    fprintf(stderr, "LRU EVICT LOCKING STATS\n");
-#endif
                     STATS_LOCK();
                     stats.evictions++;
                     STATS_UNLOCK();
-#ifdef HELLA_DEBUG
-                    fprintf(stderr, "LRU EVICT STATS UNLOCKED\n");
-#endif
                 }
 
                 if (settings.experimental_eviction) {
-#ifdef HELLA_DEBUG
-                    fprintf(stderr, "LRU EVICT RECORDING FREED BYTES START\n");
-#endif
                     assert(search != NULL);
                     freed_bytes += ITEM_ntotal(search);
-#ifdef HELLA_DEBUG
-                    fprintf(stderr, "LRU EVICT RECORDING FREED BYTES DONE\n");
-                    fprintf(stderr, "EXP LRU EVICT %zd of %zd\n", freed_bytes, ntotal);
-#endif
                 }
-#ifdef HELLA_DEBUG
-                fprintf(stderr, "LRU EVICT UNLINKING\n");
-#endif
                 do_item_unlink(search);
-#ifdef HELLA_DEBUG
-                fprintf(stderr, "LRU EVICT UNLINK DONE\n");
-#endif
                 it = NULL;
 
                 if (!settings.experimental_eviction || freed_bytes >= ntotal) {
@@ -221,15 +189,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 }
             }
         }
-#ifdef HELLA_DEBUG
-        fprintf(stderr, "END LRU EVICT\n");
-#endif
+
         it = slabs_alloc(ntotal, id);
-#ifdef HELLA_DEBUG
-        if (it != 0) {
-            fprintf(stderr, "Allocation succeeded after TTL + LRU eviction\n");
-        }
-#endif
+
         if (it == 0) {
             itemstats[id].outofmemory++;
             /* Last ditch effort. There is a very rare bug which causes
@@ -240,9 +202,6 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
              * free it anyway.
              */
             tries = item_alloc_tries_init();
-#ifdef HELLA_DEBUG
-            fprintf(stderr, "START OOM EVICT\n");
-#endif
             for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
                     itemstats[id].tailrepairs++;

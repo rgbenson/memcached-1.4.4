@@ -415,13 +415,7 @@ enum store_item_type store_item(item *item, int comm, conn* c) {
     enum store_item_type ret;
 
     pthread_mutex_lock(&cache_lock);
-#ifdef HELLA_DEBUG
-    fprintf(stderr, "entering do_store_item(%d)\n", item->nbytes);
-#endif
     ret = do_store_item(item, comm, c);
-#ifdef HELLA_DEBUG
-    fprintf(stderr, "returned do_store_item(%d) = %d\n", item->nbytes, ret);
-#endif
     pthread_mutex_unlock(&cache_lock);
     return ret;
 }
