@@ -85,9 +85,8 @@ unsigned int slabs_clsid(const size_t size) {
     if (size == 0) {
         return 0;
     } else if (settings.experimental_eviction) {
-        if (size >= 1024 * 1024) {
+        if (size >= settings.item_size_max) {
             return 0;
-            fprintf(stderr, "Too fucking big d00d\n");
         } else {
             return 1;
         }
