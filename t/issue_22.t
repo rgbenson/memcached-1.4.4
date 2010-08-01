@@ -5,7 +5,6 @@ use Test::More tests => 84;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
-use Data::Dumper;
 
 my $server = new_memcached("-m 3");
 my $sock = $server->sock;
@@ -35,7 +34,6 @@ if (testing_experimental_eviction) {
     my $second_evicted = $second_stats->{"items:31:evicted"};
     is ($second_evicted, "0", "check evicted");
 }
-
 
 for ($key = 40; $key < 80; $key++) {
     print $sock "set key$key 0 0 66560\r\n$value\r\n";

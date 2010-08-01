@@ -36,7 +36,7 @@ is($stats->{"evictions"}, "0", "no evictions to start");
 # set many big items, enough to get evictions
 for (my $i = 0; $i < 100; $i++) {
   print $sock "set item_$i 0 0 $len\r\n$big\r\n";
-  is(scalar<$sock>, "STORED\r\n", "stored item_$i");
+  is(scalar <$sock>, "STORED\r\n", "stored item_$i");
 }
 
 # some evictions should have happened

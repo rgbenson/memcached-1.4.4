@@ -5,7 +5,6 @@ use Test::More tests => 11;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
-use Data::Dumper;
 
 my $server = new_memcached();
 my $sock = $server->sock;

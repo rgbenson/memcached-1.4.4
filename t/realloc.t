@@ -6,7 +6,6 @@ use Test::More;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
-use Data::Dumper;
 
 if (testing_experimental_eviction()) {
     plan tests => 315;
