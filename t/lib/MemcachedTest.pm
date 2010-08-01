@@ -196,7 +196,7 @@ sub new_memcached {
     croak("memcached binary not executable\n") unless -x _;
 
     unless ($childpid) {
-        exec "$builddir/timedrun 600 $exe $args";
+        exec "$builddir/timedrun 600 env HEAPCHECK=strict $exe $args";
         exit; # never gets here.
     }
 
@@ -246,6 +246,11 @@ sub DESTROY {
 sub stop {
     my $self = shift;
     kill 15, $self->{pid};
+}
+
+sub debug {
+    my $self = shift;
+    exec "gdb -p $self->{pid}";
 }
 
 sub host { $_[0]{host} }

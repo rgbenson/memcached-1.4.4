@@ -5102,7 +5102,7 @@ echo "${ECHO_T}$ac_cv_lib_gcov_main" >&6; }
 if test $ac_cv_lib_gcov_main = yes; then
 
                       PROFILER_FLAGS="-fprofile-arcs -ftest-coverage"
-                      PROFILER_LDFLAGS="-lgcov"
+                      PROFILER_LDFLAGS="-lgcov -ltcmalloc"
 
 else
 

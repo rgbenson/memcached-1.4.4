@@ -242,10 +242,21 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
             return 0;
         }
 
-        mem_malloced += size;
-        ret = calloc(size, 1);
-        MEMCACHED_SLABS_ALLOCATE(size, id, 0, ret);
-        return ret;
+        if ((ret = malloc(size)) != NULL) {
+            memset(ret, 0, size);
+            mem_malloced += size;
+            MEMCACHED_SLABS_ALLOCATE(size, id, 0, ret);
+
+#ifdef HELLA_DEBUG
+            fprintf(stderr, "allocated %zd bytes at %p (%zd total)\n", size, (void *)ret, mem_malloced);
+#endif
+
+            return ret;
+        } else {
+            fprintf(stderr, "malloc failed!\n");
+            MEMCACHED_SLABS_ALLOCATE_FAILED(size, 0);
+            return NULL;
+        }
     }
 
     /* fail unless we have space at the end of a recently allocated page,
