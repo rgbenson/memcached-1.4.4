@@ -4230,7 +4230,6 @@ static void remove_pidfile(const char *pid_file) {
 
 static void sig_handler(const int sig) {
     printf("SIGINT handled.\n");
-    // system("leaks memcached-debug");
     exit(EXIT_SUCCESS);
 }
 
