@@ -314,7 +314,9 @@ static pid_t start_server(in_port_t *port_out, bool daemon, int timeout) {
          argv[arg++] = "-vvv";
 #endif
 
-         if (strcmp("true", getenv("TESTING_EXPERIMENTAL_EVICTION")) == 0) {
+         char *env_str;
+         if ((env_str = getenv("TESTING_EXPERIMENTAL_EVICTION")) != NULL &&
+             strcmp("true", env_str) == 0) {
              argv[arg++] = "-E";
          }
 
