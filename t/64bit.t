@@ -39,7 +39,13 @@ for (1..5) {
     my $res = <$sock>;
     $hit_limit = 1 if $res ne "STORED\r\n";
 }
-ok($hit_limit, "hit size limit");
 
 $slabs = mem_stats($sock, 'slabs');
-is($slabs->{'active_slabs'}, 1, "1 active slab");
+
+if (testing_experimental_eviction()) {
+    is($hit_limit, 0, "didn't hit size limit");
+    is($slabs->{'active_slabs'}, 0, "0 active slabs");
+} else {
+    is($hit_limit, 1, "hit size limit");
+    is($slabs->{'active_slabs'}, 1, "1 active slab");
+}

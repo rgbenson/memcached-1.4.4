@@ -38,10 +38,6 @@ static item *tails[LARGEST_ID];
 static itemstats_t itemstats[LARGEST_ID];
 static unsigned int sizes[LARGEST_ID];
 
-static int item_alloc_total_tries_init(void) {
-    return settings.experimental_eviction == true ? settings.experimental_eviction_alloc_tries : 1;
-}
-
 void item_stats_reset(void) {
     pthread_mutex_lock(&cache_lock);
     memset(itemstats, 0, sizeof(itemstats));
@@ -85,12 +81,17 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
     return sizeof(item) + nkey + *nsuffix + nbytes;
 }
 
+/*@null*/
+static int item_alloc_tries_init(void) {
+    return settings.experimental_eviction ? settings.experimental_eviction_alloc_tries : 50;
+}
+
 /*@null@*/
 item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_time_t exptime, const int nbytes) {
     uint8_t nsuffix;
     item *it = NULL;
     char suffix[40];
-    unsigned int freed_bytes;
+    size_t freed_bytes = 0;
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
     if (settings.use_cas) {
         ntotal += sizeof(uint64_t);
@@ -101,36 +102,36 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         return 0;
 
     /* do a quick check if we have any expired items in the tail.. */
-    int alloc_total_tries = item_alloc_total_tries_init();
-    int tries = 50;
+    int tries = item_alloc_tries_init();
     item *search;
 
-    for (freed_bytes = 0;
-         (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
-         alloc_total_tries--) {
-        for (search = tails[id];
-             tries > 0 && search != NULL;
-             tries--, search=search->prev) {
-            if (search->refcount == 0 &&
-                (search->exptime != 0 && search->exptime < current_time)) {
-                it = search;
+    for (search = tails[id];
+         tries > 0 && search != NULL;
+         tries--, search=search->prev) {
+        if (search->refcount == 0 &&
+            (search->exptime != 0 && search->exptime < current_time)) {
+            it = search;
 
-                if (settings.experimental_eviction) {
-                    it->refcount = 0;
-                    freed_bytes += ITEM_ntotal(search);
-                } else {
-                    /* I don't want to actually free the object, just steal
-                     * the item to avoid to grab the slab mutex twice ;-) */
-                    it->refcount = 1;
-                }
-
+            if (settings.experimental_eviction) {
+                it->refcount = 0;
                 do_item_unlink(it);
+                freed_bytes += ITEM_ntotal(it);
+                it = NULL;
 
+                if (freed_bytes >= ntotal)
+                    break;
+            } else {
+                /* I don't want to actually free the object, just steal
+                 * the item to avoid to grab the slab mutex twice ;-)
+                 */
+                it->refcount = 1;
+                do_item_unlink(it);
                 /* Initialize the item block: */
                 it->slabs_clsid = 0;
                 it->refcount = 0;
                 break;
             }
+
         }
     }
 
@@ -139,7 +140,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         ** Could not find an expired item at the tail, and memory allocation
         ** failed. Try to evict some items!
         */
-        tries = 50;
+        tries = item_alloc_tries_init();
 
         /* If requested to not push old items out of cache when memory runs out,
          * we're out of luck at this point...
@@ -162,30 +163,28 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             return NULL;
         }
 
-        alloc_total_tries = item_alloc_total_tries_init();
-        for (freed_bytes = 0;
-             (settings.experimental_eviction ? freed_bytes < ntotal : true) && alloc_total_tries > 0;
-             alloc_total_tries--) {
-            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
-                if (search->refcount == 0) {
-                    if (search->exptime == 0 || search->exptime > current_time) {
-                        itemstats[id].evicted++;
-                        itemstats[id].evicted_time = current_time - search->time;
-                        if (search->exptime != 0)
-                            itemstats[id].evicted_nonzero++;
-                        STATS_LOCK();
-                        stats.evictions++;
-                        STATS_UNLOCK();
-                    }
-                    if (settings.experimental_eviction)
-                        freed_bytes += ITEM_ntotal(search);
-
-                    do_item_unlink(search);
-                    break;
+        for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+            if (search->refcount == 0) {
+                if (search->exptime == 0 || search->exptime > current_time) {
+                    itemstats[id].evicted++;
+                    itemstats[id].evicted_time = current_time - search->time;
+                    if (search->exptime != 0)
+                        itemstats[id].evicted_nonzero++;
+                    STATS_LOCK();
+                    stats.evictions++;
+                    STATS_UNLOCK();
                 }
+
+                if (settings.experimental_eviction)
+                    freed_bytes += ITEM_ntotal(it);
+
+                do_item_unlink(search);
+                it = NULL;
+
+                if (!settings.experimental_eviction || freed_bytes >= ntotal)
+                    break;
             }
         }
-
         it = slabs_alloc(ntotal, id);
         if (it == 0) {
             itemstats[id].outofmemory++;
@@ -196,25 +195,34 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
              * three hours, so if we find one in the tail which is that old,
              * free it anyway.
              */
-            tries = 50;
+            tries = item_alloc_tries_init();
             for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
                 if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
                     itemstats[id].tailrepairs++;
                     search->refcount = 0;
+
+                    if (settings.experimental_eviction)
+                        freed_bytes += ITEM_ntotal(it);
+
                     do_item_unlink(search);
-                    break;
+                    it = NULL;
+
+                    if (!settings.experimental_eviction || freed_bytes >= ntotal)
+                        break;
                 }
             }
             it = slabs_alloc(ntotal, id);
+
             if (it == 0) {
                 return NULL;
             }
         }
     }
+    /* fprintf(stderr, "normative alloc %p\n", (void *)it); */
 
-    if (!settings.experimental_eviction) {
-        assert (it->slabs_clsid == 0);
-    }
+    /* fprintf(stderr, "[ Ptr: %p | Sz: %zu | Class: %d ]\n", (void *)it, ntotal, it->slabs_clsid); */
+
+    assert(it->slabs_clsid == 0);
 
     it->slabs_clsid = id;
 
@@ -314,7 +322,6 @@ int do_item_link(item *it) {
     stats.curr_bytes += ITEM_ntotal(it);
     stats.curr_items += 1;
     stats.total_items += 1;
-    stats.allocations += 1;
     STATS_UNLOCK();
 
     /* Allocate a new CAS ID on link. */

@@ -1,13 +1,22 @@
 #!/usr/bin/perl
 
 use strict;
-use Test::More tests => 4;
+use Test::More;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
+use Data::Dumper;
 
 my $server = new_memcached();
 my $sock = $server->sock;
+
+if (testing_experimental_eviction()) {
+    plan tests => 1;
+    ok("we don't use chunks");
+    exit 0;
+} else {
+    plan tests => 4;
+}
 
 print $sock "set issue29 0 0 0\r\n\r\n";
 is (scalar <$sock>, "STORED\r\n", "stored issue29");

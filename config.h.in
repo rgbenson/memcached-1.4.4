@@ -3,7 +3,7 @@
 /* Set to nonzero if you want to include DTRACE */
 #undef ENABLE_DTRACE
 
-/* Set to nonzero if you want to enable experimental eviction */
+/* Set to nonzero if you want to include SASL */
 #undef ENABLE_SASL
 
 /* machine is bigendian */

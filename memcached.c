@@ -13,6 +13,7 @@
  *      Anatoly Vorobey <mellon@pobox.com>
  *      Brad Fitzpatrick <brad@danga.com>
  */
+
 #include "memcached.h"
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -4124,9 +4125,7 @@ static void usage(void) {
     printf("-S            Turn on Sasl authentication\n");
 #endif
 
-#ifdef ENABLE_EXPERIMENTAL_EVICTION
-    printf("-E            Use experimental eviction (single slab, evict many)\n");
-#endif
+    printf("-E            Use experimental eviction (one slab, evict aggressively)\n");
 
     return;
 }
@@ -4511,13 +4510,9 @@ int main (int argc, char **argv) {
             settings.sasl = true;
             break;
         case 'E':
-#ifdef ENABLE_EXPERIMENTAL_EVCITION
+            fprintf(stderr, "\n\n*** EXPERIMENTAL EVICTION ENABLED ***\n\n");
             settings.experimental_eviction = true;
             break;
-#else
-            fprintf(stderr, "This server is not built with experimental eviction support.\n");
-            exit(EX_USAGE);
-#endif
         default:
             fprintf(stderr, "Illegal argument \"%c\"\n", c);
             return 1;

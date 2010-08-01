@@ -85,7 +85,12 @@ unsigned int slabs_clsid(const size_t size) {
     if (size == 0) {
         return 0;
     } else if (settings.experimental_eviction) {
-        return 1;
+        if (size >= 1024 * 1024) {
+            return 0;
+            fprintf(stderr, "Too fucking big d00d\n");
+        } else {
+            return 1;
+        }
     }
 
     int res = POWER_SMALLEST;
@@ -236,8 +241,9 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
             MEMCACHED_SLABS_ALLOCATE_FAILED(size, id);
             return 0;
         }
+
         mem_malloced += size;
-        ret = malloc(size);
+        ret = calloc(size, 1);
         MEMCACHED_SLABS_ALLOCATE(size, id, 0, ret);
         return ret;
     }

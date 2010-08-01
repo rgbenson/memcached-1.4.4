@@ -1320,8 +1320,6 @@ Optional Features:
   --disable-dependency-tracking  speeds up one-time build
   --enable-dependency-tracking   do not reject slow dependency extractors
   --enable-sasl           Enable SASL authentication
-  --enable-experimental-eviction
-                          Disable the slab allocator and evict aggressively
   --enable-dtrace         Enable dtrace probes
   --disable-coverage      Disable code coverage
   --enable-64bit          build 64bit version
@@ -4882,20 +4880,6 @@ echo "$as_me: error: Failed to locate the library containing sasl_server_init" >
    { (exit 1); exit 1; }; }
 
 fi
-
-fi
-
-# Check whether --enable-experimental-eviction was given.
-if test "${enable_experimental_eviction+set}" = set; then
-  enableval=$enable_experimental_eviction;
-fi
-
-
-if test "x$enable_experimental-eviction" = "xyes"; then
-
-cat >>confdefs.h <<\_ACEOF
-#define ENABLE_SASL 1
-_ACEOF
 
 fi
 

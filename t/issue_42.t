@@ -5,6 +5,7 @@ use Test::More tests => 11;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
+use Data::Dumper;
 
 my $server = new_memcached();
 my $sock = $server->sock;
@@ -17,5 +18,7 @@ for ($key = 0; $key < 10; $key++) {
 }
 
 my $first_stats = mem_stats($sock, "slabs");
-my $req = $first_stats->{"1:mem_requested"};
+
+my $req = $first_stats->{"total_malloced"};
 ok ($req == "640" || $req == "800", "Check allocated size");
+

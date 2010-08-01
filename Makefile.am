@@ -76,7 +76,10 @@ MOSTLYCLEANFILES = *.gcov *.gcno *.gcda *.tcov
 test:	memcached-debug sizes testapp
 	$(srcdir)/sizes
 	$(srcdir)/testapp
-	prove $(srcdir)/t
+	echo "*** Testing with experimental eviction disabled"
+	env TEST_EXPERIMENTAL_EVICTION=false prove $(srcdir)/t
+	echo "*** Testing with experimental eviction enabled"
+	env TEST_EXPERIMENTAL_EVICTION=true prove $(srcdir)/t
 	@if test `basename $(PROFILER)` = "gcov"; then \
 	  for file in memcached_debug-*.gc??; do \
 	    mv -f $$file `echo $$file | sed 's/memcached_debug-//'`; \
@@ -97,6 +100,7 @@ test:	memcached-debug sizes testapp
 	    fi \
 	  done \
 	else :; fi
+
 
 docs:
 	(cat Doxyfile ; echo "PROJECT_NUMBER=`cat version.num`") | doxygen -

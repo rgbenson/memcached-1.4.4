@@ -13,7 +13,12 @@ my $builddir = getcwd;
 
 
 @EXPORT = qw(new_memcached sleep mem_get_is mem_gets mem_gets_is mem_stats
-             supports_sasl supports_experimental_eviction free_port);
+             supports_sasl supports_experimental_eviction testing_experimental_eviction
+             free_port);
+
+sub testing_experimental_eviction {
+    return $ENV{'TEST_EXPERIMENTAL_EVICTION'} eq "true";
+}
 
 sub sleep {
     my $n = shift;
@@ -171,10 +176,15 @@ sub new_memcached {
     }
 
     my $udpport = free_port("udp");
-    $args .= " -p $port";
+
     if (supports_udp()) {
         $args .= " -U $udpport";
     }
+
+    if ($ENV{'TEST_EXPERIMENTAL_EVICTION'} == 'true') {
+        $args .= " -p $port -E";
+    }
+
     if ($< == 0) {
         $args .= " -u root";
     }

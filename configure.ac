@@ -83,13 +83,6 @@ if test "x$enable_sasl" = "xyes"; then
     ])
 fi
 
-AC_ARG_ENABLE(experimental-eviction,
-  [AS_HELP_STRING([--enable-experimental-eviction],[Disable the slab allocator and evict aggressively])])
-
-if test "x$enable_experimental-eviction" = "xyes"; then
-  AC_DEFINE([ENABLE_SASL],1,[Set to nonzero if you want to enable experimental eviction])
-fi
-
 AC_ARG_ENABLE(dtrace,
   [AS_HELP_STRING([--enable-dtrace],[Enable dtrace probes])])
 if test "x$enable_dtrace" = "xyes"; then

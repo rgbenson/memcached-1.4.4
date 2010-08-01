@@ -1190,7 +1190,10 @@ memcached_debug_dtrace.o: $(memcached_debug_OBJECTS)
 test:	memcached-debug sizes testapp
 	$(srcdir)/sizes
 	$(srcdir)/testapp
-	prove $(srcdir)/t
+	echo "*** Testing with experimental eviction disabled"
+	env TEST_EXPERIMENTAL_EVICTION=false prove $(srcdir)/t
+	echo "*** Testing with experimental eviction enabled"
+	env TEST_EXPERIMENTAL_EVICTION=true prove $(srcdir)/t
 	@if test `basename $(PROFILER)` = "gcov"; then \
 	  for file in memcached_debug-*.gc??; do \
 	    mv -f $$file `echo $$file | sed 's/memcached_debug-//'`; \
