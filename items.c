@@ -224,9 +224,6 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             }
         }
     }
-    /* fprintf(stderr, "normative alloc %p\n", (void *)it); */
-
-    /* fprintf(stderr, "[ Ptr: %p | Sz: %zu | Class: %d ]\n", (void *)it, ntotal, it->slabs_clsid); */
 
     assert(it->slabs_clsid == 0);
 
