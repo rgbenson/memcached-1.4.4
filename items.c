@@ -183,7 +183,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 do_item_unlink(search);
                 search = prev;
                 prev = NULL;
-                
+
                 if (!settings.experimental_eviction || freed_bytes >= ntotal)
                     break;
             }
