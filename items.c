@@ -110,8 +110,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
          tries--) {
         if (search->refcount == 0 &&
             (search->exptime != 0 && search->exptime < current_time)) {
+            prev = search->prev;
             if (settings.experimental_eviction) {
-                prev = search->prev;
                 freed_bytes += ITEM_ntotal(search);
                 search->refcount = 0;
                 do_item_unlink(search);
