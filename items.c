@@ -104,24 +104,21 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     /* do a quick check if we have any expired items in the tail.. */
     int tries = item_alloc_tries_init();
     item *search;
-
+    item *prev;
     for (search = tails[id];
          tries > 0 && search != NULL;
-         tries--, search=search->prev) {
+         tries--) {
         if (search->refcount == 0 &&
             (search->exptime != 0 && search->exptime < current_time)) {
-            it = search;
-
             if (settings.experimental_eviction) {
-                it->refcount = 0;
-                do_item_unlink(it);
-                freed_bytes += ITEM_ntotal(it);
-                it = NULL;
-
-                if (freed_bytes >= ntotal) {
+                prev = search->prev;
+                freed_bytes += ITEM_ntotal(search);
+                search->refcount = 0;
+                do_item_unlink(search);
+                if (freed_bytes >= ntotal)
                     break;
-                }
             } else {
+                it = search;
                 /* I don't want to actually free the object, just steal
                  * the item to avoid to grab the slab mutex twice ;-)
                  */
@@ -132,7 +129,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 it->refcount = 0;
                 break;
             }
-
+            search = prev;
+            prev = NULL;
         }
     }
 
@@ -164,7 +162,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             return NULL;
         }
 
-        for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+        for (search = tails[id]; tries > 0 && search != NULL; tries--) {
             if (search->refcount == 0) {
                 if (search->exptime == 0 || search->exptime > current_time) {
                     itemstats[id].evicted++;
@@ -178,15 +176,16 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 }
 
                 if (settings.experimental_eviction) {
-                    assert(search != NULL);
                     freed_bytes += ITEM_ntotal(search);
                 }
-                do_item_unlink(search);
-                it = NULL;
 
-                if (!settings.experimental_eviction || freed_bytes >= ntotal) {
+                prev = search->prev;
+                do_item_unlink(search);
+                search = prev;
+                prev = NULL;
+                
+                if (!settings.experimental_eviction || freed_bytes >= ntotal)
                     break;
-                }
             }
         }
 
