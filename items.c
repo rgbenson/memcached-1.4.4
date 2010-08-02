@@ -104,17 +104,18 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     /* do a quick check if we have any expired items in the tail.. */
     int tries = item_alloc_tries_init();
     item *search;
-    item *prev;
     for (search = tails[id];
          tries > 0 && search != NULL;
          tries--) {
         if (search->refcount == 0 &&
             (search->exptime != 0 && search->exptime < current_time)) {
-            prev = search->prev;
             if (settings.experimental_eviction) {
                 freed_bytes += ITEM_ntotal(search);
                 search->refcount = 0;
+                item *prev = search->prev;
                 do_item_unlink(search);
+                search = prev;
+
                 if (freed_bytes >= ntotal)
                     break;
             } else {
@@ -129,8 +130,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 it->refcount = 0;
                 break;
             }
-            search = prev;
-            prev = NULL;
+        } else {
+            search = search->prev;
         }
     }
 
@@ -179,13 +180,14 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                     freed_bytes += ITEM_ntotal(search);
                 }
 
-                prev = search->prev;
+                item *prev = search->prev;
                 do_item_unlink(search);
                 search = prev;
-                prev = NULL;
 
                 if (!settings.experimental_eviction || freed_bytes >= ntotal)
                     break;
+            } else {
+                search = search->prev;
             }
         }
 
@@ -201,19 +203,22 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
              * free it anyway.
              */
             tries = item_alloc_tries_init();
-            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+            for (search = tails[id]; tries > 0 && search != NULL; tries--) {
                 if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
                     itemstats[id].tailrepairs++;
-                    search->refcount = 0;
 
                     if (settings.experimental_eviction)
-                        freed_bytes += ITEM_ntotal(it);
+                        freed_bytes += ITEM_ntotal(search);
 
+                    item *prev = search->prev;
+                    search->refcount = 0;
                     do_item_unlink(search);
-                    it = NULL;
+                    search = prev;
 
                     if (!settings.experimental_eviction || freed_bytes >= ntotal)
                         break;
+                } else {
+                    search = search->prev;
                 }
             }
             it = slabs_alloc(ntotal, id);
