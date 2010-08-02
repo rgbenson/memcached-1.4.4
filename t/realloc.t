@@ -8,7 +8,7 @@ use lib "$Bin/lib";
 use MemcachedTest;
 
 if (testing_experimental_eviction()) {
-    plan tests => 315;
+    plan tests => 307;
 } else {
     plan skip_all => 'Experimental eviction is not under test';
 }
@@ -77,24 +77,3 @@ my $stats = mem_stats($sock, "items");
 my $fourth_item_count = $stats->{"items:1:number"};
 is($fourth_item_count, $second_item_count,
    "with longer values, same objects are stored as with long values before");
-
-my $stats = mem_stats($sock, "settings");
-is($stats->{"experimental_eviction"}, "on");
-is($stats->{"experimental_eviction_alloc_tries"}, "500");
-
-print $sock "settings experimental_eviction_alloc_tries 499\r\n";
-is(scalar <$sock>, "OK SET experimental_eviction_alloc_tries\r\n", "set alloc tries valid");
-my $stats = mem_stats($sock, "settings");
-is($stats->{"experimental_eviction_alloc_tries"}, "499");
-
-
-print $sock "settings experimental_eviction_alloc_tries 0\r\n";
-is(scalar <$sock>, "CLIENT_ERROR value out of range\r\n", "set alloc tries invalid");
-my $stats = mem_stats($sock, "settings");
-is($stats->{"experimental_eviction_alloc_tries"}, "499");
-
-print $sock "settings experimental_eviction_alloc_tries boosh\r\n";
-is(scalar <$sock>, "CLIENT_ERROR value must be numeric\r\n", "set alloc tries nonnumeric fails");
-
-print $sock "settings experimental_eviction_alloc_tries 31337\r\n";
-is(scalar <$sock>, "CLIENT_ERROR value out of range\r\n", "set alloc tries too high fails");

@@ -2532,18 +2532,24 @@ static void process_setting(conn *c, token_t *tokens, const size_t ntokens) {
    assert(c != NULL);
 
    if (ntokens == 4) {
-       if (strcmp(subcommand, "experimental_eviction_alloc_tries") == 0) {
-           uint32_t newval;
-           if (! safe_strtoul(tokens[SUBCOMMAND_TOKEN + 1].value, &newval)) {
-               out_string(c, "CLIENT_ERROR value must be numeric");
-               return;
-           }
 
-           if (newval > 0 && newval < MAX_EXPERIMENTAL_EVICTION_ALLOC_TRIES) {
-               settings.experimental_eviction_alloc_tries = newval;
-               out_string(c, "OK SET experimental_eviction_alloc_tries");
+
+       if (strcmp(subcommand, "experimental_eviction_alloc_tries") == 0) {
+           if (settings.experimental_eviction) {
+               uint32_t newval;
+               if (! safe_strtoul(tokens[SUBCOMMAND_TOKEN + 1].value, &newval)) {
+                   out_string(c, "CLIENT_ERROR value must be numeric");
+                   return;
+               }
+
+               if (newval > 0 && newval < MAX_EXPERIMENTAL_EVICTION_ALLOC_TRIES) {
+                   settings.experimental_eviction_alloc_tries = newval;
+                   out_string(c, "OK SET experimental_eviction_alloc_tries");
+               } else {
+                   out_string(c, "CLIENT_ERROR value out of range");
+               }
            } else {
-               out_string(c, "CLIENT_ERROR value out of range");
+               out_string(c, "CLIENT_ERROR experimental_eviction is not enabled");
            }
        }
    }
