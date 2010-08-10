@@ -122,6 +122,14 @@ static enum transmit_result transmit(conn *c);
 
 #define REALTIME_MAXDELTA 60*60*24*30
 
+/* get_len related */
+#define NO_ITEM_LEN_SPECIFIED -1U
+#define GET_LEN_TOKEN 1
+
+/* characters used to terminate command responses */
+#define TERMINATION_CHARS "\r\n"
+#define TERMINATION_CHARS_LEN strlen(TERMINATION_CHARS)
+
 /*
  * given time value that's either unix time or delta from current unix time, return
  * unix time. Use the fact that delta can't exceed one month (and real time value can't
@@ -332,7 +340,8 @@ conn *conn_new(const int sfd, enum conn_states init_state,
 
         c->rbuf = c->wbuf = 0;
         c->ilist = 0;
-        c->suffixlist = 0;
+        c->suffixes[cas_suffix_type].list = 0;
+        c->suffixes[getlen_suffix_type].list = 0;
         c->iov = 0;
         c->msglist = 0;
         c->hdrbuf = 0;
@@ -340,7 +349,8 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         c->rsize = read_buffer_size;
         c->wsize = DATA_BUFFER_SIZE;
         c->isize = ITEM_LIST_INITIAL;
-        c->suffixsize = SUFFIX_LIST_INITIAL;
+        c->suffixes[cas_suffix_type].size = CAS_SUFFIX_LIST_INITIAL;
+        c->suffixes[getlen_suffix_type].size = GETLEN_SUFFIX_LIST_INITIAL;
         c->iovsize = IOV_LIST_INITIAL;
         c->msgsize = MSG_LIST_INITIAL;
         c->hdrsize = 0;
@@ -348,12 +358,16 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         c->rbuf = (char *)malloc((size_t)c->rsize);
         c->wbuf = (char *)malloc((size_t)c->wsize);
         c->ilist = (item **)malloc(sizeof(item *) * c->isize);
-        c->suffixlist = (char **)malloc(sizeof(char *) * c->suffixsize);
+        c->suffixes[cas_suffix_type].list =
+          (char **)malloc(sizeof(char *) * c->suffixes[cas_suffix_type].size);
+        c->suffixes[getlen_suffix_type].list =
+          (char **)malloc(sizeof(char *) * c->suffixes[getlen_suffix_type].size);
         c->iov = (struct iovec *)malloc(sizeof(struct iovec) * c->iovsize);
         c->msglist = (struct msghdr *)malloc(sizeof(struct msghdr) * c->msgsize);
 
         if (c->rbuf == 0 || c->wbuf == 0 || c->ilist == 0 || c->iov == 0 ||
-                c->msglist == 0 || c->suffixlist == 0) {
+            c->msglist == 0 || c->suffixes[cas_suffix_type].list == 0 ||
+            c->suffixes[getlen_suffix_type].list == 0) {
             conn_free(c);
             fprintf(stderr, "malloc()\n");
             return NULL;
@@ -405,9 +419,15 @@ conn *conn_new(const int sfd, enum conn_states init_state,
     c->rcurr = c->rbuf;
     c->ritem = 0;
     c->icurr = c->ilist;
-    c->suffixcurr = c->suffixlist;
+
+    c->suffixes[cas_suffix_type].curr =
+      c->suffixes[cas_suffix_type].list;
+    c->suffixes[getlen_suffix_type].curr =
+      c->suffixes[getlen_suffix_type].list;
+    c->suffixes[cas_suffix_type].left = 0;
+    c->suffixes[getlen_suffix_type].left = 0;
+
     c->ileft = 0;
-    c->suffixleft = 0;
     c->iovused = 0;
     c->msgcurr = 0;
     c->msgused = 0;
@@ -454,9 +474,21 @@ static void conn_cleanup(conn *c) {
         }
     }
 
-    if (c->suffixleft != 0) {
-        for (; c->suffixleft > 0; c->suffixleft--, c->suffixcurr++) {
-            cache_free(c->thread->suffix_cache, *(c->suffixcurr));
+    if (c->suffixes[cas_suffix_type].left != 0) {
+        for (; c->suffixes[cas_suffix_type].left > 0;
+               c->suffixes[cas_suffix_type].left--,
+               c->suffixes[cas_suffix_type].curr++) {
+            cache_free(c->thread->suffix_caches[cas_suffix_type],
+                       *(c->suffixes[cas_suffix_type].curr));
+        }
+    }
+
+    if (c->suffixes[getlen_suffix_type].left != 0) {
+        for (; c->suffixes[getlen_suffix_type].left > 0;
+               c->suffixes[getlen_suffix_type].left--,
+               c->suffixes[getlen_suffix_type].curr++) {
+            cache_free(c->thread->suffix_caches[getlen_suffix_type],
+                       *(c->suffixes[getlen_suffix_type].curr));
         }
     }
 
@@ -488,8 +520,10 @@ void conn_free(conn *c) {
             free(c->wbuf);
         if (c->ilist)
             free(c->ilist);
-        if (c->suffixlist)
-            free(c->suffixlist);
+        if (c->suffixes[cas_suffix_type].list)
+            free(c->suffixes[cas_suffix_type].list);
+        if (c->suffixes[getlen_suffix_type].list)
+            free(c->suffixes[getlen_suffix_type].list);
         if (c->iov)
             free(c->iov);
         free(c);
@@ -771,7 +805,7 @@ static void out_string(conn *c, const char *str) {
     }
 
     memcpy(c->wbuf, str, len);
-    memcpy(c->wbuf + len, "\r\n", 2);
+    memcpy(c->wbuf + len, TERMINATION_CHARS, TERMINATION_CHARS_LEN);
     c->wbytes = len + 2;
     c->wcurr = c->wbuf;
 
@@ -795,7 +829,8 @@ static void complete_nread_ascii(conn *c) {
     c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++;
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
-    if (strncmp(ITEM_data(it) + it->nbytes - 2, "\r\n", 2) != 0) {
+    if (strncmp(ITEM_data(it) + it->nbytes - 2,
+                TERMINATION_CHARS, TERMINATION_CHARS_LEN) != 0) {
         out_string(c, "CLIENT_ERROR bad data chunk");
     } else {
       ret = store_item(it, comm, c);
@@ -1192,7 +1227,7 @@ static void process_bin_get(conn *c) {
         rsp->message.header.response.cas = htonll(ITEM_get_cas(it));
 
         // add the flags
-        rsp->message.body.flags = htonl(strtoul(ITEM_suffix(it), NULL, 10));
+        rsp->message.body.flags = htonl(item_get_flags(it));
         add_iov(c, &rsp->message.body, sizeof(rsp->message.body));
 
         if (c->cmd == PROTOCOL_BINARY_CMD_GETK) {
@@ -2517,15 +2552,144 @@ static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
     }
 }
 
+static void free_suffix_caches(conn *c, suffix_cache_type_t type) {
+    while (c->suffixes[type].left > 0) {
+        char *suffix = *(c->suffixes[type].curr);
+        cache_free(c->thread->suffix_caches[type], suffix);
+        c->suffixes[type].curr++;
+        c->suffixes[type].left--;
+    }
+}
+
+static inline bool create_suffix(conn *c, suffix_cache_type_t type,
+                                 unsigned valid_key_iter, char **suffix) {
+    /* Goofy mid-flight realloc. */
+    if (valid_key_iter >= c->suffixes[type].size) {
+        int realloc_size = sizeof(char *) * c->suffixes[type].size * 2;
+        char **new_list = realloc(c->suffixes[type].list, realloc_size);
+
+        if (new_list == NULL) return false;
+
+        c->suffixes[type].size *= 2;
+        c->suffixes[type].list  = new_list;
+    }
+
+    *suffix = cache_alloc(c->thread->suffix_caches[type]);
+    if (*suffix == NULL) {
+      out_string(c, "SERVER_ERROR out of memory making suffix");
+      return false;
+    }
+
+    *(c->suffixes[type].list + valid_key_iter) = *suffix;
+    return true;
+}
+
+/*
+ * Construct the response. Each hit adds three elements to the
+ * outgoing data list:
+ *   "VALUE "
+ *   key
+ *   " " + flags + " " + data length + "\r\n" + data (with \r\n)
+ */
+static bool respond_get_command(conn *c, unsigned valid_key_iter, item *it,
+                                uint32_t user_spec_len, bool return_cas) {
+      char *cas_suffix = NULL;
+      int cas_suffix_len = 0;
+      bool no_length_specified = true;
+      uint32_t value_nbytes = it->nbytes - TERMINATION_CHARS_LEN;
+
+      /*
+       * Check to see if this is handling a get_len command.
+       * !!Note!! The conditionals below are not optimized to fallback
+       * to no_length_specified = true behavior when a user specifies
+       * a length longer than the original value. This is so we can use
+       * the current per-connection suffix cache management logic without
+       * modification.
+       */
+      if (unlikely(user_spec_len != NO_ITEM_LEN_SPECIFIED)) {
+          no_length_specified = false;
+          /* Determine if the user has asked for only a fraction of the value. */
+          if (user_spec_len < value_nbytes) {
+              /*
+               * If the specified length is shorter than the value's
+               * full length then we truncate.
+               */
+              value_nbytes = user_spec_len;
+          }
+      }
+
+      MEMCACHED_COMMAND_GET(c->sfd, ITEM_key(it), it->nkey,
+                            value_nbytes + TERMINATION_CHARS_LEN,
+                            ITEM_get_cas(it));
+
+      if (return_cas) {
+          if (create_suffix(c, cas_suffix_type, valid_key_iter, &cas_suffix)) {
+              cas_suffix_len = snprintf(cas_suffix, CAS_SUFFIX_SIZE,
+                                        " %llu",
+                                        (unsigned long long)ITEM_get_cas(it));
+          } else {
+            return false;
+          }
+      }
+
+      if (add_iov(c, "VALUE ", 6) != 0) return false;
+      if (add_iov(c, ITEM_key(it), it->nkey) != 0) return false;
+
+      if (likely(no_length_specified)) {
+           if (add_iov(c, ITEM_suffix(it), it->nsuffix - 2) != 0) return false;
+      } else {
+           /*
+            * Write a new suffix which contains the modified value length
+            * information.
+            */
+           char *getlen_suffix = NULL;
+           uint32_t flags, getlen_suffix_len;
+           flags = item_get_flags(it);
+           if (!create_suffix(c, getlen_suffix_type, valid_key_iter, &getlen_suffix))
+             return false;
+           getlen_suffix_len = snprintf(getlen_suffix, GETLEN_SUFFIX_SIZE,
+                                        " %d %d\r\n", flags, value_nbytes);
+           if (add_iov(c, getlen_suffix, getlen_suffix_len - 2) != 0)
+             return false;
+      }
+
+
+      if (return_cas && add_iov(c, cas_suffix, cas_suffix_len) != 0) return false;
+      if (add_iov(c, TERMINATION_CHARS, TERMINATION_CHARS_LEN) != 0) return false;
+
+      if (likely(no_length_specified)) {
+          if (add_iov(c, ITEM_data(it), it->nbytes) != 0) return false;
+      } else {
+          if (add_iov(c, ITEM_data(it), value_nbytes) != 0) return false;
+          if (add_iov(c, TERMINATION_CHARS, TERMINATION_CHARS_LEN) != 0) return false;
+      }
+
+      return true;
+}
+
+
+
 /* ntokens is overwritten here... shrug.. */
-static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens, bool return_cas) {
+static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
+                                       uint32_t user_spec_len, bool return_cas) {
     char *key;
     size_t nkey;
-    int i = 0;
+    unsigned valid_key_iter = 0;
     item *it;
-    token_t *key_token = &tokens[KEY_TOKEN];
-    char *suffix;
+    token_t *key_token;
+
     assert(c != NULL);
+
+    /*
+     * If we are dealing with at get{,s}_len command then the length
+     * is the second argument so we need to push the key_token out by
+     * one.
+     */
+    if (user_spec_len == NO_ITEM_LEN_SPECIFIED) {
+        key_token = &tokens[KEY_TOKEN];
+    } else {
+        key_token = &tokens[KEY_TOKEN + 1];
+    }
 
     do {
         while(key_token->length != 0) {
@@ -2543,7 +2707,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 stats_prefix_record_get(key, nkey, NULL != it);
             }
             if (it) {
-                if (i >= c->isize) {
+                if (valid_key_iter >= c->isize) {
                     item **new_list = realloc(c->ilist, sizeof(item *) * c->isize * 2);
                     if (new_list) {
                         c->isize *= 2;
@@ -2554,77 +2718,23 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                     }
                 }
 
-                /*
-                 * Construct the response. Each hit adds three elements to the
-                 * outgoing data list:
-                 *   "VALUE "
-                 *   key
-                 *   " " + flags + " " + data length + "\r\n" + data (with \r\n)
-                 */
+                if (respond_get_command(c, valid_key_iter, it, user_spec_len, return_cas)) {
+                    if (settings.verbose > 1)
+                        fprintf(stderr, ">%d sending key %s\n", c->sfd, ITEM_key(it));
 
-                if (return_cas)
-                {
-                  MEMCACHED_COMMAND_GET(c->sfd, ITEM_key(it), it->nkey,
-                                        it->nbytes, ITEM_get_cas(it));
-                  /* Goofy mid-flight realloc. */
-                  if (i >= c->suffixsize) {
-                    char **new_suffix_list = realloc(c->suffixlist,
-                                           sizeof(char *) * c->suffixsize * 2);
-                    if (new_suffix_list) {
-                        c->suffixsize *= 2;
-                        c->suffixlist  = new_suffix_list;
-                    } else {
-                        item_remove(it);
-                        break;
-                    }
-                  }
-
-                  suffix = cache_alloc(c->thread->suffix_cache);
-                  if (suffix == NULL) {
-                    out_string(c, "SERVER_ERROR out of memory making CAS suffix");
+                    /* item_get() has incremented it->refcount for us */
+                    pthread_mutex_lock(&c->thread->stats.mutex);
+                    c->thread->stats.slab_stats[it->slabs_clsid].get_hits++;
+                    c->thread->stats.get_cmds++;
+                    pthread_mutex_unlock(&c->thread->stats.mutex);
+                    item_update(it);
+                    *(c->ilist + valid_key_iter) = it;
+                    valid_key_iter++;
+                } else {
+                    /* Failure to respond. */
                     item_remove(it);
-                    return;
-                  }
-                  *(c->suffixlist + i) = suffix;
-                  int suffix_len = snprintf(suffix, SUFFIX_SIZE,
-                                            " %llu\r\n",
-                                            (unsigned long long)ITEM_get_cas(it));
-                  if (add_iov(c, "VALUE ", 6) != 0 ||
-                      add_iov(c, ITEM_key(it), it->nkey) != 0 ||
-                      add_iov(c, ITEM_suffix(it), it->nsuffix - 2) != 0 ||
-                      add_iov(c, suffix, suffix_len) != 0 ||
-                      add_iov(c, ITEM_data(it), it->nbytes) != 0)
-                      {
-                          item_remove(it);
-                          break;
-                      }
+                    break;
                 }
-                else
-                {
-                  MEMCACHED_COMMAND_GET(c->sfd, ITEM_key(it), it->nkey,
-                                        it->nbytes, ITEM_get_cas(it));
-                  if (add_iov(c, "VALUE ", 6) != 0 ||
-                      add_iov(c, ITEM_key(it), it->nkey) != 0 ||
-                      add_iov(c, ITEM_suffix(it), it->nsuffix + it->nbytes) != 0)
-                      {
-                          item_remove(it);
-                          break;
-                      }
-                }
-
-
-                if (settings.verbose > 1)
-                    fprintf(stderr, ">%d sending key %s\n", c->sfd, ITEM_key(it));
-
-                /* item_get() has incremented it->refcount for us */
-                pthread_mutex_lock(&c->thread->stats.mutex);
-                c->thread->stats.slab_stats[it->slabs_clsid].get_hits++;
-                c->thread->stats.get_cmds++;
-                pthread_mutex_unlock(&c->thread->stats.mutex);
-                item_update(it);
-                *(c->ilist + i) = it;
-                i++;
-
             } else {
                 pthread_mutex_lock(&c->thread->stats.mutex);
                 c->thread->stats.get_misses++;
@@ -2648,10 +2758,16 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     } while(key_token->value != NULL);
 
     c->icurr = c->ilist;
-    c->ileft = i;
+    c->ileft = valid_key_iter;
     if (return_cas) {
-        c->suffixcurr = c->suffixlist;
-        c->suffixleft = i;
+        c->suffixes[cas_suffix_type].curr =
+          c->suffixes[cas_suffix_type].list;
+        c->suffixes[cas_suffix_type].left = valid_key_iter;
+    }
+    if (user_spec_len != NO_ITEM_LEN_SPECIFIED) {
+        c->suffixes[getlen_suffix_type].curr =
+          c->suffixes[getlen_suffix_type].list;
+        c->suffixes[getlen_suffix_type].left = valid_key_iter;
     }
 
     if (settings.verbose > 1)
@@ -2672,6 +2788,19 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     }
 
     return;
+}
+
+static inline void process_get_len_command(conn *c, token_t *tokens,
+                                           size_t ntokens, bool return_cas) {
+    uint32_t user_spec_len;
+    if (safe_strtoul(tokens[GET_LEN_TOKEN].value, &user_spec_len) &&
+        user_spec_len > 0 && user_spec_len < NO_ITEM_LEN_SPECIFIED)  {
+        process_get_command(c, tokens, ntokens, user_spec_len, return_cas);
+    } else if (return_cas) {
+        out_string(c, "GETS_LEN bad LEN argument" );
+    } else {
+        out_string(c, "GET_LEN bad LEN argument" );
+    }
 }
 
 static void process_update_command(conn *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
@@ -2860,7 +2989,7 @@ enum delta_result_type do_add_delta(conn *c, item *it, const bool incr,
             return EOM;
         }
         memcpy(ITEM_data(new_it), buf, res);
-        memcpy(ITEM_data(new_it) + res, "\r\n", 2);
+        memcpy(ITEM_data(new_it) + res, TERMINATION_CHARS, TERMINATION_CHARS_LEN);
         item_replace(it, new_it);
         do_item_remove(new_it);       /* release our reference */
     } else { /* replace in-place */
@@ -2971,7 +3100,12 @@ static void process_command(conn *c, char *command) {
         ((strcmp(tokens[COMMAND_TOKEN].value, "get") == 0) ||
          (strcmp(tokens[COMMAND_TOKEN].value, "bget") == 0))) {
 
-        process_get_command(c, tokens, ntokens, false);
+        process_get_command(c, tokens, ntokens, NO_ITEM_LEN_SPECIFIED, false);
+
+    } else if (ntokens >= 3 &&
+               (strcmp(tokens[COMMAND_TOKEN].value, "get_len") == 0)) {
+
+        process_get_len_command(c, tokens, ntokens, false);
 
     } else if ((ntokens == 6 || ntokens == 7) &&
                ((strcmp(tokens[COMMAND_TOKEN].value, "add") == 0 && (comm = NREAD_ADD)) ||
@@ -2992,7 +3126,12 @@ static void process_command(conn *c, char *command) {
 
     } else if (ntokens >= 3 && (strcmp(tokens[COMMAND_TOKEN].value, "gets") == 0)) {
 
-        process_get_command(c, tokens, ntokens, true);
+        process_get_command(c, tokens, ntokens, NO_ITEM_LEN_SPECIFIED, true);
+
+    } else if (ntokens >= 3 &&
+               (strcmp(tokens[COMMAND_TOKEN].value, "gets_len") == 0)) {
+
+        process_get_len_command(c, tokens, ntokens, true);
 
     } else if ((ntokens == 4 || ntokens == 5) && (strcmp(tokens[COMMAND_TOKEN].value, "decr") == 0)) {
 
@@ -3660,12 +3799,8 @@ static void drive_machine(conn *c) {
                         c->icurr++;
                         c->ileft--;
                     }
-                    while (c->suffixleft > 0) {
-                        char *suffix = *(c->suffixcurr);
-                        cache_free(c->thread->suffix_cache, suffix);
-                        c->suffixcurr++;
-                        c->suffixleft--;
-                    }
+                    free_suffix_caches(c, cas_suffix_type);
+                    free_suffix_caches(c, getlen_suffix_type);
                     /* XXX:  I don't know why this wasn't the general case */
                     if(c->protocol == binary_prot) {
                         conn_set_state(c, c->write_and_go);

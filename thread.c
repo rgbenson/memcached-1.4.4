@@ -218,10 +218,17 @@ static void setup_thread(LIBEVENT_THREAD *me) {
         exit(EXIT_FAILURE);
     }
 
-    me->suffix_cache = cache_create("suffix", SUFFIX_SIZE, sizeof(char*),
-                                    NULL, NULL);
-    if (me->suffix_cache == NULL) {
-        fprintf(stderr, "Failed to create suffix cache\n");
+    me->suffix_caches[cas_suffix_type] =
+      cache_create("cas suffix", CAS_SUFFIX_SIZE, sizeof(char*), NULL, NULL);
+    if (me->suffix_caches[cas_suffix_type] == NULL) {
+        fprintf(stderr, "Failed to create cas suffix cache\n");
+        exit(EXIT_FAILURE);
+    }
+
+    me->suffix_caches[getlen_suffix_type] =
+      cache_create("getlen suffix", GETLEN_SUFFIX_SIZE, sizeof(char*), NULL, NULL);
+    if (me->suffix_caches[getlen_suffix_type] == NULL) {
+        fprintf(stderr, "Failed to create getlen suffix cache\n");
         exit(EXIT_FAILURE);
     }
 }
