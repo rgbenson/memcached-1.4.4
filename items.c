@@ -84,6 +84,7 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
 /*@null*/
 uint32_t item_get_flags(item *it) {
     return (uint32_t)strtoul(ITEM_suffix(it), NULL, 10);
+}
 
 /*@null*/
 static int item_alloc_tries_init(void) {
