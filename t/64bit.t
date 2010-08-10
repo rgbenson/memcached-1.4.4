@@ -20,7 +20,7 @@ if ($stats->{'pointer_size'} eq "32") {
     plan skip_all => 'Skipping 64-bit tests on 32-bit build';
     exit 0;
 } else {
-    plan tests => 6;
+    plan tests => 5;
 }
 
 is($stats->{'pointer_size'}, 64, "is 64 bit");
@@ -31,14 +31,19 @@ is($slabs->{'total_malloced'}, "4294967328", "expected (faked) value of total_ma
 is($slabs->{'active_slabs'}, 0, "no active slabs");
 
 my $hit_limit = 0;
-for (1..5) {
+for (1..20) {
     my $size = 400 * 1024;
     my $data = "a" x $size;
     print $sock "set big$_ 0 0 $size\r\n$data\r\n";
     my $res = <$sock>;
     $hit_limit = 1 if $res ne "STORED\r\n";
 }
-ok($hit_limit, "hit size limit");
 
 $slabs = mem_stats($sock, 'slabs');
-is($slabs->{'active_slabs'}, 1, "1 active slab");
+
+SKIP: {
+    skip "experimental eviction does not use slabs", 1 if testing_experimental_eviction();
+    is($slabs->{'active_slabs'}, 1, "1 active slab");
+}
+
+

@@ -16,7 +16,6 @@ for ($key = 0; $key < 10; $key++) {
     is (scalar <$sock>, "STORED\r\n", "stored key$key");
 }
 
-#print $sock "stats slabs"
 my $first_stats  = mem_stats($sock, "slabs");
 my $first_malloc = $first_stats->{total_malloced};
 
@@ -30,5 +29,4 @@ for ($key = 10; $key < 20; $key++) {
 my $second_stats  = mem_stats($sock, "slabs");
 my $second_malloc = $second_stats->{total_malloced};
 
-
-is ($second_malloc, $first_malloc, "Memory grows..")
+cmp_ok($second_malloc, '<=', $first_malloc * 1.10, "memory doesn't grow significantly");

@@ -26,8 +26,14 @@ print $sock "stats reset\r\n";
 is (scalar <$sock>, "RESET\r\n", "Stats reset");
 
 my $second_stats  = mem_stats($sock, "items");
-my $second_evicted = $second_stats->{"items:31:evicted"};
-is ("0", $second_evicted, "check evicted");
+
+if (testing_experimental_eviction) {
+    my $second_evicted = $second_stats->{"items:1:evicted"};
+    is ($second_evicted, "0", "check evicted");
+} else {
+    my $second_evicted = $second_stats->{"items:31:evicted"};
+    is ($second_evicted, "0", "check evicted");
+}
 
 for ($key = 40; $key < 80; $key++) {
     print $sock "set key$key 0 0 66560\r\n$value\r\n";
@@ -35,5 +41,11 @@ for ($key = 40; $key < 80; $key++) {
 }
 
 my $last_stats  = mem_stats($sock, "items");
-my $last_evicted = $last_stats->{"items:31:evicted"};
-is ($last_evicted, "40", "check evicted");
+
+if (testing_experimental_eviction) {
+    my $last_evicted = $last_stats->{"items:1:evicted"};
+    is ($last_evicted, "33", "check evicted");
+} else {
+    my $last_evicted = $last_stats->{"items:31:evicted"};
+    is ($last_evicted, "40", "check evicted");
+}

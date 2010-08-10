@@ -247,6 +247,7 @@ struct stats {
     time_t        started;          /* when the process was started */
     bool          accepting_conns;  /* whether we are currently accepting */
     uint64_t      listen_disabled_num;
+    uint64_t      allocations;
 };
 
 #define MAX_VERBOSITY_LEVEL 2
@@ -277,7 +278,14 @@ struct settings {
     enum protocol binding_protocol;
     int backlog;
     int item_size_max;        /* Maximum item size, and upper end for slabs */
-    bool sasl;              /* SASL on/off */
+    bool sasl;                /* SASL on/off */
+
+    /* experimental eviction enables use of a single slab and, in do_item_alloc,
+       retries eviction up to experimental_eviction_alloc_tries times,
+       or until enough bytes are freed to accomodate a new item */
+    bool experimental_eviction; /* whether to enable experimental eviction */
+    int experimental_eviction_alloc_tries; /* the maximum number of eviction attempts,
+                                              per eviction method (expired, LRU) */
 };
 
 extern struct stats stats;

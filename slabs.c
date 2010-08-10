@@ -82,13 +82,21 @@ static void slabs_preallocate (const unsigned int maxslabs);
  */
 
 unsigned int slabs_clsid(const size_t size) {
-    int res = POWER_SMALLEST;
-
-    if (size == 0)
+    if (size == 0) {
         return 0;
+    } else if (settings.experimental_eviction) {
+        if (size >= settings.item_size_max) {
+            return 0;
+        } else {
+            return 1;
+        }
+    }
+
+    int res = POWER_SMALLEST;
     while (size > slabclass[res].size)
         if (res++ == power_largest)     /* won't fit in the biggest slab */
             return 0;
+
     return res;
 }
 
@@ -227,16 +235,24 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
     p = &slabclass[id];
     assert(p->sl_curr == 0 || ((item *)p->slots[p->sl_curr - 1])->slabs_clsid == 0);
 
-#ifdef USE_SYSTEM_MALLOC
-    if (mem_limit && mem_malloced + size > mem_limit) {
-        MEMCACHED_SLABS_ALLOCATE_FAILED(size, id);
-        return 0;
+    if (settings.experimental_eviction) {
+        if (mem_limit && mem_malloced + size > mem_limit) {
+            MEMCACHED_SLABS_ALLOCATE_FAILED(size, id);
+            return 0;
+        }
+
+        if ((ret = malloc(size)) != NULL) {
+            memset(ret, 0, size);
+            mem_malloced += size;
+            MEMCACHED_SLABS_ALLOCATE(size, id, 0, ret);
+
+            return ret;
+        } else {
+            fprintf(stderr, "malloc(%zu) failed!\n", size);
+            MEMCACHED_SLABS_ALLOCATE_FAILED(size, 0);
+            return NULL;
+        }
     }
-    mem_malloced += size;
-    ret = malloc(size);
-    MEMCACHED_SLABS_ALLOCATE(size, id, 0, ret);
-    return ret;
-#endif
 
     /* fail unless we have space at the end of a recently allocated page,
        we have something on our freelist, or we could allocate a new page */
@@ -279,11 +295,11 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
     MEMCACHED_SLABS_FREE(size, id, ptr);
     p = &slabclass[id];
 
-#ifdef USE_SYSTEM_MALLOC
-    mem_malloced -= size;
-    free(ptr);
-    return;
-#endif
+    if (settings.experimental_eviction) {
+        mem_malloced -= size;
+        free(ptr);
+        return;
+    }
 
     if (p->sl_curr == p->sl_total) { /* need more space on the free list */
         int new_size = (p->sl_total != 0) ? p->sl_total * 2 : 16;  /* 16 is arbitrary */

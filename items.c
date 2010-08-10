@@ -81,8 +81,13 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
     return sizeof(item) + nkey + *nsuffix + nbytes;
 }
 
+/*@null*/
 uint32_t item_get_flags(item *it) {
     return (uint32_t)strtoul(ITEM_suffix(it), NULL, 10);
+
+/*@null*/
+static int item_alloc_tries_init(void) {
+    return settings.experimental_eviction ? settings.experimental_eviction_alloc_tries : 50;
 }
 
 /*@null@*/
@@ -90,6 +95,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     uint8_t nsuffix;
     item *it = NULL;
     char suffix[40];
+    size_t freed_bytes = 0;
     size_t ntotal = item_make_header(nkey + 1, flags, nbytes, suffix, &nsuffix);
     if (settings.use_cas) {
         ntotal += sizeof(uint64_t);
@@ -100,24 +106,36 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         return 0;
 
     /* do a quick check if we have any expired items in the tail.. */
-    int tries = 50;
+    int tries = item_alloc_tries_init();
     item *search;
-
     for (search = tails[id];
          tries > 0 && search != NULL;
-         tries--, search=search->prev) {
+         tries--) {
         if (search->refcount == 0 &&
             (search->exptime != 0 && search->exptime < current_time)) {
-            it = search;
-            /* I don't want to actually free the object, just steal
-             * the item to avoid to grab the slab mutex twice ;-)
-             */
-            it->refcount = 1;
-            do_item_unlink(it);
-            /* Initialize the item block: */
-            it->slabs_clsid = 0;
-            it->refcount = 0;
-            break;
+            if (settings.experimental_eviction) {
+                freed_bytes += ITEM_ntotal(search);
+                search->refcount = 0;
+                item *prev = search->prev;
+                do_item_unlink(search);
+                search = prev;
+
+                if (freed_bytes >= ntotal)
+                    break;
+            } else {
+                it = search;
+                /* I don't want to actually free the object, just steal
+                 * the item to avoid to grab the slab mutex twice ;-)
+                 */
+                it->refcount = 1;
+                do_item_unlink(it);
+                /* Initialize the item block: */
+                it->slabs_clsid = 0;
+                it->refcount = 0;
+                break;
+            }
+        } else {
+            search = search->prev;
         }
     }
 
@@ -126,7 +144,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         ** Could not find an expired item at the tail, and memory allocation
         ** failed. Try to evict some items!
         */
-        tries = 50;
+        tries = item_alloc_tries_init();
 
         /* If requested to not push old items out of cache when memory runs out,
          * we're out of luck at this point...
@@ -149,22 +167,36 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             return NULL;
         }
 
-        for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+        for (search = tails[id]; tries > 0 && search != NULL; tries--) {
             if (search->refcount == 0) {
                 if (search->exptime == 0 || search->exptime > current_time) {
                     itemstats[id].evicted++;
                     itemstats[id].evicted_time = current_time - search->time;
                     if (search->exptime != 0)
                         itemstats[id].evicted_nonzero++;
+
                     STATS_LOCK();
                     stats.evictions++;
                     STATS_UNLOCK();
                 }
+
+                if (settings.experimental_eviction) {
+                    freed_bytes += ITEM_ntotal(search);
+                }
+
+                item *prev = search->prev;
                 do_item_unlink(search);
-                break;
+                search = prev;
+
+                if (!settings.experimental_eviction || freed_bytes >= ntotal)
+                    break;
+            } else {
+                search = search->prev;
             }
         }
+
         it = slabs_alloc(ntotal, id);
+
         if (it == 0) {
             itemstats[id].outofmemory++;
             /* Last ditch effort. There is a very rare bug which causes
@@ -174,16 +206,27 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
              * three hours, so if we find one in the tail which is that old,
              * free it anyway.
              */
-            tries = 50;
-            for (search = tails[id]; tries > 0 && search != NULL; tries--, search=search->prev) {
+            tries = item_alloc_tries_init();
+            for (search = tails[id]; tries > 0 && search != NULL; tries--) {
                 if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
                     itemstats[id].tailrepairs++;
+
+                    if (settings.experimental_eviction)
+                        freed_bytes += ITEM_ntotal(search);
+
+                    item *prev = search->prev;
                     search->refcount = 0;
                     do_item_unlink(search);
-                    break;
+                    search = prev;
+
+                    if (!settings.experimental_eviction || freed_bytes >= ntotal)
+                        break;
+                } else {
+                    search = search->prev;
                 }
             }
             it = slabs_alloc(ntotal, id);
+
             if (it == 0) {
                 return NULL;
             }

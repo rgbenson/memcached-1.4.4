@@ -13,6 +13,7 @@
  *      Anatoly Vorobey <mellon@pobox.com>
  *      Brad Fitzpatrick <brad@danga.com>
  */
+
 #include "memcached.h"
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -130,6 +131,8 @@ static enum transmit_result transmit(conn *c);
 #define TERMINATION_CHARS "\r\n"
 #define TERMINATION_CHARS_LEN strlen(TERMINATION_CHARS)
 
+#define MAX_EXPERIMENTAL_EVICTION_ALLOC_TRIES 10000
+
 /*
  * given time value that's either unix time or delta from current unix time, return
  * unix time. Use the fact that delta can't exceed one month (and real time value can't
@@ -202,6 +205,8 @@ static void settings_init(void) {
     settings.backlog = 1024;
     settings.binding_protocol = negotiating_prot;
     settings.item_size_max = 1024 * 1024; /* The famous 1MB upper limit. */
+    settings.experimental_eviction = false;
+    settings.experimental_eviction_alloc_tries = 500;
 }
 
 /*
@@ -2443,6 +2448,7 @@ static void server_stats(ADD_STAT add_stats, conn *c) {
     APPEND_STAT("limit_maxbytes", "%llu", (unsigned long long)settings.maxbytes);
     APPEND_STAT("accepting_conns", "%u", stats.accepting_conns);
     APPEND_STAT("listen_disabled_num", "%llu", (unsigned long long)stats.listen_disabled_num);
+    APPEND_STAT("allocations", "%llu", (unsigned long long)stats.allocations);
     APPEND_STAT("threads", "%d", settings.num_threads);
     APPEND_STAT("conn_yields", "%llu", (unsigned long long)thread_stats.conn_yields);
     STATS_UNLOCK();
@@ -2474,6 +2480,10 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
                 prot_text(settings.binding_protocol));
     APPEND_STAT("auth_enabled_sasl", "%s", settings.sasl ? "yes" : "no");
     APPEND_STAT("item_size_max", "%d", settings.item_size_max);
+    APPEND_STAT("experimental_eviction", "%s",
+                settings.experimental_eviction ? "on" : "off");
+    APPEND_STAT("experimental_eviction_alloc_tries", "%d",
+                settings.experimental_eviction_alloc_tries);
 }
 
 static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
@@ -2667,7 +2677,33 @@ static bool respond_get_command(conn *c, unsigned valid_key_iter, item *it,
       return true;
 }
 
+static void process_setting(conn *c, token_t *tokens, const size_t ntokens) {
+   const char *subcommand = tokens[SUBCOMMAND_TOKEN].value;
+   assert(c != NULL);
 
+   if (ntokens == 4) {
+
+
+       if (strcmp(subcommand, "experimental_eviction_alloc_tries") == 0) {
+           if (settings.experimental_eviction) {
+               uint32_t newval;
+               if (! safe_strtoul(tokens[SUBCOMMAND_TOKEN + 1].value, &newval)) {
+                   out_string(c, "CLIENT_ERROR value must be numeric");
+                   return;
+               }
+
+               if (newval > 0 && newval < MAX_EXPERIMENTAL_EVICTION_ALLOC_TRIES) {
+                   settings.experimental_eviction_alloc_tries = newval;
+                   out_string(c, "OK SET experimental_eviction_alloc_tries");
+               } else {
+                   out_string(c, "CLIENT_ERROR value out of range");
+               }
+           } else {
+               out_string(c, "CLIENT_ERROR experimental_eviction is not enabled");
+           }
+       }
+   }
+}
 
 /* ntokens is overwritten here... shrug.. */
 static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
@@ -3144,6 +3180,10 @@ static void process_command(conn *c, char *command) {
     } else if (ntokens >= 2 && (strcmp(tokens[COMMAND_TOKEN].value, "stats") == 0)) {
 
         process_stat(c, tokens, ntokens);
+
+    } else if (ntokens == 4 && (strcmp(tokens[COMMAND_TOKEN].value, "settings") == 0)) {
+
+        process_setting(c, tokens, ntokens);
 
     } else if (ntokens >= 2 && ntokens <= 4 && (strcmp(tokens[COMMAND_TOKEN].value, "flush_all") == 0)) {
         time_t exptime = 0;
@@ -4223,6 +4263,9 @@ static void usage(void) {
 #ifdef ENABLE_SASL
     printf("-S            Turn on Sasl authentication\n");
 #endif
+
+    printf("-E            Use experimental eviction (one slab, evict aggressively)\n");
+
     return;
 }
 
@@ -4442,6 +4485,7 @@ int main (int argc, char **argv) {
           "B:"  /* Binding protocol */
           "I:"  /* Max item size */
           "S"   /* Sasl ON */
+          "E"   /* experimental eviction */
         ))) {
         switch (c) {
         case 'a':
@@ -4603,6 +4647,9 @@ int main (int argc, char **argv) {
             exit(EX_USAGE);
 #endif
             settings.sasl = true;
+            break;
+        case 'E':
+            settings.experimental_eviction = true;
             break;
         default:
             fprintf(stderr, "Illegal argument \"%c\"\n", c);

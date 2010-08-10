@@ -313,6 +313,13 @@ static pid_t start_server(in_port_t *port_out, bool daemon, int timeout) {
 #ifdef MESSAGE_DEBUG
          argv[arg++] = "-vvv";
 #endif
+
+         char *env_str;
+         if ((env_str = getenv("TESTING_EXPERIMENTAL_EVICTION")) != NULL &&
+             strcmp("true", env_str) == 0) {
+             argv[arg++] = "-E";
+         }
+
         argv[arg++] = NULL;
         assert(execv(argv[0], argv) != -1);
     }
