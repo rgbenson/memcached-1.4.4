@@ -14,9 +14,9 @@
 
 
 
-pkgdatadir = $(datadir)/memcached
-pkglibdir = $(libdir)/memcached
-pkgincludedir = $(includedir)/memcached
+pkgdatadir = $(datadir)/twemcached
+pkglibdir = $(libdir)/twemcached
+pkgincludedir = $(includedir)/twemcached
 am__cd = CDPATH="$${ZSH_VERSION+.}$(PATH_SEPARATOR)" && cd
 install_sh_DATA = $(install_sh) -c -m 644
 install_sh_PROGRAM = $(install_sh) -c
@@ -85,12 +85,12 @@ LTLIBOBJS =
 MAKEINFO = ${SHELL} /home/rbenson/source/rgb/memcached-1.4.4/missing --run makeinfo
 MKDIR_P = /bin/mkdir -p
 OBJEXT = o
-PACKAGE = memcached
+PACKAGE = twemcached
 PACKAGE_BUGREPORT = brad@danga.com
-PACKAGE_NAME = memcached
-PACKAGE_STRING = memcached 1.4.4
-PACKAGE_TARNAME = memcached
-PACKAGE_VERSION = 1.4.4
+PACKAGE_NAME = twemcached
+PACKAGE_STRING = twemcached 1.4.4-twitter-0.1
+PACKAGE_TARNAME = twemcached
+PACKAGE_VERSION = 1.4.4-twitter-0.1
 PATH_SEPARATOR = :
 PROFILER = /usr/bin/gcov
 PROFILER_FLAGS = -fprofile-arcs -ftest-coverage
@@ -98,7 +98,7 @@ PROFILER_LDFLAGS = -lgcov
 SET_MAKE = 
 SHELL = /bin/sh
 STRIP = 
-VERSION = 1.4.4
+VERSION = 1.4.4-twitter-0.1
 XML2RFC = no
 XSLTPROC = /usr/bin/xsltproc
 abs_builddir = /home/rbenson/source/rgb/memcached-1.4.4/doc
