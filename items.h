@@ -16,6 +16,10 @@ int  do_item_replace(item *it, item *new_it);
 /*@null@*/
 char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit, unsigned int *bytes);
 void do_item_stats(ADD_STAT add_stats, void *c);
+
+unsigned int item_count_per_bucket(uint8_t bucket_id);
+unsigned int item_evictions_per_bucket(uint8_t bucket_id);
+
 /*@null@*/
 void do_item_stats_sizes(ADD_STAT add_stats, void *c);
 void do_item_flush_expired(void);

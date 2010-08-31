@@ -312,6 +312,7 @@ typedef struct _stritem {
     uint8_t         nsuffix;    /* length of flags-and-length string */
     uint8_t         it_flags;   /* ITEM_* above */
     uint8_t         slabs_clsid;/* which slab class we're in */
+    uint8_t         bucket_id;/* which stats histogram bucket we're in */
     uint8_t         nkey;       /* key length, w/terminating null and padding */
     void * end[];
     /* if it_flags & ITEM_CAS we have 8 bytes CAS */

@@ -831,7 +831,7 @@ static void complete_nread_ascii(conn *c) {
     enum store_item_type ret;
 
     pthread_mutex_lock(&c->thread->stats.mutex);
-    c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++;
+    c->thread->stats.slab_stats[it->bucket_id].set_cmds++;
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
     if (strncmp(ITEM_data(it) + it->nbytes - 2,
@@ -1132,7 +1132,7 @@ static void complete_update_bin(conn *c) {
     item *it = c->item;
 
     pthread_mutex_lock(&c->thread->stats.mutex);
-    c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++;
+    c->thread->stats.slab_stats[it->bucket_id].set_cmds++;
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
     /* We don't actually receive the trailing two characters in the bin
@@ -1218,7 +1218,7 @@ static void process_bin_get(conn *c) {
 
         pthread_mutex_lock(&c->thread->stats.mutex);
         c->thread->stats.get_cmds++;
-        c->thread->stats.slab_stats[it->slabs_clsid].get_hits++;
+        c->thread->stats.slab_stats[it->bucket_id].get_hits++;
         pthread_mutex_unlock(&c->thread->stats.mutex);
 
         MEMCACHED_COMMAND_GET(c->sfd, ITEM_key(it), it->nkey,
@@ -2168,14 +2168,14 @@ enum store_item_type do_store_item(item *it, int comm, conn *c) {
             // it and old_it may belong to different classes.
             // I'm updating the stats for the one that's getting pushed out
             pthread_mutex_lock(&c->thread->stats.mutex);
-            c->thread->stats.slab_stats[old_it->slabs_clsid].cas_hits++;
+            c->thread->stats.slab_stats[old_it->bucket_id].cas_hits++;
             pthread_mutex_unlock(&c->thread->stats.mutex);
 
             item_replace(old_it, it);
             stored = STORED;
         } else {
             pthread_mutex_lock(&c->thread->stats.mutex);
-            c->thread->stats.slab_stats[old_it->slabs_clsid].cas_badval++;
+            c->thread->stats.slab_stats[old_it->bucket_id].cas_badval++;
             pthread_mutex_unlock(&c->thread->stats.mutex);
 
             if(settings.verbose > 1) {
@@ -2760,7 +2760,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
 
                     /* item_get() has incremented it->refcount for us */
                     pthread_mutex_lock(&c->thread->stats.mutex);
-                    c->thread->stats.slab_stats[it->slabs_clsid].get_hits++;
+                    c->thread->stats.slab_stats[it->bucket_id].get_hits++;
                     c->thread->stats.get_cmds++;
                     pthread_mutex_unlock(&c->thread->stats.mutex);
                     item_update(it);
@@ -3010,9 +3010,9 @@ enum delta_result_type do_add_delta(conn *c, item *it, const bool incr,
 
     pthread_mutex_lock(&c->thread->stats.mutex);
     if (incr) {
-        c->thread->stats.slab_stats[it->slabs_clsid].incr_hits++;
+        c->thread->stats.slab_stats[it->bucket_id].incr_hits++;
     } else {
-        c->thread->stats.slab_stats[it->slabs_clsid].decr_hits++;
+        c->thread->stats.slab_stats[it->bucket_id].decr_hits++;
     }
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
@@ -3077,7 +3077,7 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
         MEMCACHED_COMMAND_DELETE(c->sfd, ITEM_key(it), it->nkey);
 
         pthread_mutex_lock(&c->thread->stats.mutex);
-        c->thread->stats.slab_stats[it->slabs_clsid].delete_hits++;
+        c->thread->stats.slab_stats[it->bucket_id].delete_hits++;
         pthread_mutex_unlock(&c->thread->stats.mutex);
 
         item_unlink(it);

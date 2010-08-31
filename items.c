@@ -44,6 +44,13 @@ void item_stats_reset(void) {
     pthread_mutex_unlock(&cache_lock);
 }
 
+unsigned int item_count_per_bucket(uint8_t bucket_id) {
+    return sizes[bucket_id];
+}
+
+unsigned int item_evictions_per_bucket(uint8_t bucket_id) {
+    return itemstats[bucket_id].evicted;
+}
 
 /* Get the next CAS id for a new item. */
 uint64_t get_cas_id(void) {
@@ -102,6 +109,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         ntotal += sizeof(uint64_t);
     }
 
+    unsigned int bucket_id = slab_bucket_id(ntotal);
     unsigned int id = slabs_clsid(ntotal);
     if (id == 0)
         return 0;
@@ -131,7 +139,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
                 it->refcount = 1;
                 do_item_unlink(it);
                 /* Initialize the item block: */
-                it->slabs_clsid = 0;
+                it->slabs_clsid = 0; it->bucket_id = 0;
                 it->refcount = 0;
                 break;
             }
@@ -152,7 +160,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
          */
 
         if (settings.evict_to_free == 0) {
-            itemstats[id].outofmemory++;
+            itemstats[bucket_id].outofmemory++;
             return NULL;
         }
 
@@ -164,17 +172,17 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
          */
 
         if (tails[id] == 0) {
-            itemstats[id].outofmemory++;
+            itemstats[bucket_id].outofmemory++;
             return NULL;
         }
 
         for (search = tails[id]; tries > 0 && search != NULL; tries--) {
             if (search->refcount == 0) {
                 if (search->exptime == 0 || search->exptime > current_time) {
-                    itemstats[id].evicted++;
-                    itemstats[id].evicted_time = current_time - search->time;
+                    itemstats[search->bucket_id].evicted++;
+                    itemstats[search->bucket_id].evicted_time = current_time - search->time;
                     if (search->exptime != 0)
-                        itemstats[id].evicted_nonzero++;
+                        itemstats[search->bucket_id].evicted_nonzero++;
 
                     STATS_LOCK();
                     stats.evictions++;
@@ -199,7 +207,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         it = slabs_alloc(ntotal, id);
 
         if (it == 0) {
-            itemstats[id].outofmemory++;
+            itemstats[bucket_id].outofmemory++;
             /* Last ditch effort. There is a very rare bug which causes
              * refcount leaks. We've fixed most of them, but it still happens,
              * and it may happen in the future.
@@ -210,7 +218,7 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
             tries = item_alloc_tries_init();
             for (search = tails[id]; tries > 0 && search != NULL; tries--) {
                 if (search->refcount != 0 && search->time + TAIL_REPAIR_TIME < current_time) {
-                    itemstats[id].tailrepairs++;
+                    itemstats[search->bucket_id].tailrepairs++;
 
                     if (settings.experimental_eviction)
                         freed_bytes += ITEM_ntotal(search);
@@ -234,9 +242,9 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
         }
     }
 
-    assert(it->slabs_clsid == 0);
+    assert(it->slabs_clsid == 0 && it->bucket_id == 0);
 
-    it->slabs_clsid = id;
+    it->slabs_clsid = id; it->bucket_id = bucket_id;
 
     assert(it != heads[it->slabs_clsid]);
 
@@ -263,7 +271,7 @@ void item_free(item *it) {
 
     /* so slab size changer can tell later if item is already free or not */
     clsid = it->slabs_clsid;
-    it->slabs_clsid = 0;
+    it->slabs_clsid = 0; it->bucket_id = 0;
     it->it_flags |= ITEM_SLABBED;
     DEBUG_REFCNT(it, 'F');
     slabs_free(it, ntotal, clsid);
@@ -283,7 +291,7 @@ bool item_size_ok(const size_t nkey, const int flags, const int nbytes) {
 
 static void item_link_q(item *it) { /* item is the new head */
     item **head, **tail;
-    assert(it->slabs_clsid < LARGEST_ID);
+    assert(it->slabs_clsid < LARGEST_ID && it->bucket_id < LARGEST_ID);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
     head = &heads[it->slabs_clsid];
@@ -295,13 +303,13 @@ static void item_link_q(item *it) { /* item is the new head */
     if (it->next) it->next->prev = it;
     *head = it;
     if (*tail == 0) *tail = it;
-    sizes[it->slabs_clsid]++;
+    sizes[it->bucket_id]++;
     return;
 }
 
 static void item_unlink_q(item *it) {
     item **head, **tail;
-    assert(it->slabs_clsid < LARGEST_ID);
+    assert(it->slabs_clsid < LARGEST_ID && it->bucket_id < LARGEST_ID);
     head = &heads[it->slabs_clsid];
     tail = &tails[it->slabs_clsid];
 
@@ -318,7 +326,7 @@ static void item_unlink_q(item *it) {
 
     if (it->next) it->next->prev = it->prev;
     if (it->prev) it->prev->next = it->next;
-    sizes[it->slabs_clsid]--;
+    sizes[it->bucket_id]--;
     return;
 }
 
@@ -435,25 +443,25 @@ char *do_item_cachedump(const unsigned int slabs_clsid, const unsigned int limit
 void do_item_stats(ADD_STAT add_stats, void *c) {
     int i;
     for (i = 0; i < LARGEST_ID; i++) {
-        if (tails[i] != NULL) {
-            const char *fmt = "items:%d:%s";
-            char key_str[STAT_KEY_LEN];
-            char val_str[STAT_VAL_LEN];
-            int klen = 0, vlen = 0;
+        const char *fmt = "items:%d:%s";
+        char key_str[STAT_KEY_LEN];
+        char val_str[STAT_VAL_LEN];
+        int klen = 0, vlen = 0;
 
-            APPEND_NUM_FMT_STAT(fmt, i, "number", "%u", sizes[i]);
+        if (tails[i] != NULL) {
             APPEND_NUM_FMT_STAT(fmt, i, "age", "%u", tails[i]->time);
-            APPEND_NUM_FMT_STAT(fmt, i, "evicted",
-                                "%u", itemstats[i].evicted);
-            APPEND_NUM_FMT_STAT(fmt, i, "evicted_nonzero",
-                                "%u", itemstats[i].evicted_nonzero);
-            APPEND_NUM_FMT_STAT(fmt, i, "evicted_time",
-                                "%u", itemstats[i].evicted_time);
-            APPEND_NUM_FMT_STAT(fmt, i, "outofmemory",
-                                "%u", itemstats[i].outofmemory);
-            APPEND_NUM_FMT_STAT(fmt, i, "tailrepairs",
-                                "%u", itemstats[i].tailrepairs);;
         }
+        APPEND_NUM_FMT_STAT(fmt, i, "number", "%u", sizes[i]);
+        APPEND_NUM_FMT_STAT(fmt, i, "evicted",
+                            "%u", itemstats[i].evicted);
+        APPEND_NUM_FMT_STAT(fmt, i, "evicted_nonzero",
+                            "%u", itemstats[i].evicted_nonzero);
+        APPEND_NUM_FMT_STAT(fmt, i, "evicted_time",
+                            "%u", itemstats[i].evicted_time);
+        APPEND_NUM_FMT_STAT(fmt, i, "outofmemory",
+                            "%u", itemstats[i].outofmemory);
+        APPEND_NUM_FMT_STAT(fmt, i, "tailrepairs",
+                            "%u", itemstats[i].tailrepairs);;
     }
 
     /* getting here means both ascii and binary terminators fit */
@@ -463,6 +471,17 @@ void do_item_stats(ADD_STAT add_stats, void *c) {
 /** dumps out a list of objects of each size, with granularity of 32 bytes */
 /*@null@*/
 void do_item_stats_sizes(ADD_STAT add_stats, void *c) {
+
+    if (settings.experimental_eviction) {
+      /*
+       * Walking the entire list of items requires that we
+       * grab the global cache lock.  This results in micro
+       * outages.  No need to expose this sharp knife.
+       * Use "stats items" instead.
+       */
+      add_stats(NULL, 0, NULL, 0, c);
+      return;
+    }
 
     /* max 1MB object, divided into 32 bytes size buckets */
     const int num_buckets = 32768;

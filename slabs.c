@@ -81,6 +81,15 @@ static void slabs_preallocate (const unsigned int maxslabs);
  * 0 means error: can't store such a large object
  */
 
+unsigned int slab_bucket_id(const size_t size) {
+    int res = POWER_SMALLEST;
+    while (size > slabclass[res].size)
+        if (res++ == power_largest)     /* won't fit in the biggest slab */
+            return 0;
+
+    return res;
+}
+
 unsigned int slabs_clsid(const size_t size) {
     if (size == 0) {
         return 0;
@@ -91,13 +100,7 @@ unsigned int slabs_clsid(const size_t size) {
             return 1;
         }
     }
-
-    int res = POWER_SMALLEST;
-    while (size > slabclass[res].size)
-        if (res++ == power_largest)     /* won't fit in the biggest slab */
-            return 0;
-
-    return res;
+    return slab_bucket_id(size);
 }
 
 /**
@@ -348,24 +351,23 @@ bool get_stats(const char *stat_type, int nkey, ADD_STAT add_stats, void *c) {
 
 /*@null@*/
 static void do_slabs_stats(ADD_STAT add_stats, void *c) {
-    int i, total;
+    int i, slabs_total;
     /* Get the per-thread stats which contain some interesting aggregates */
     struct thread_stats thread_stats;
     threadlocal_stats_aggregate(&thread_stats);
 
-    total = 0;
+    slabs_total = 0;
     for(i = POWER_SMALLEST; i <= power_largest; i++) {
+        char key_str[STAT_KEY_LEN];
+        char val_str[STAT_VAL_LEN];
+        int klen = 0, vlen = 0;
         slabclass_t *p = &slabclass[i];
+        APPEND_NUM_STAT(i, "chunk_size", "%u", p->size);
         if (p->slabs != 0) {
             uint32_t perslab, slabs;
             slabs = p->slabs;
             perslab = p->perslab;
 
-            char key_str[STAT_KEY_LEN];
-            char val_str[STAT_VAL_LEN];
-            int klen = 0, vlen = 0;
-
-            APPEND_NUM_STAT(i, "chunk_size", "%u", p->size);
             APPEND_NUM_STAT(i, "chunks_per_page", "%u", perslab);
             APPEND_NUM_STAT(i, "total_pages", "%u", slabs);
             APPEND_NUM_STAT(i, "total_chunks", "%u", slabs * perslab);
@@ -375,28 +377,32 @@ static void do_slabs_stats(ADD_STAT add_stats, void *c) {
             APPEND_NUM_STAT(i, "free_chunks_end", "%u", p->end_page_free);
             APPEND_NUM_STAT(i, "mem_requested", "%llu",
                             (unsigned long long)p->requested);
-            APPEND_NUM_STAT(i, "get_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].get_hits);
-            APPEND_NUM_STAT(i, "cmd_set", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].set_cmds);
-            APPEND_NUM_STAT(i, "delete_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].delete_hits);
-            APPEND_NUM_STAT(i, "incr_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].incr_hits);
-            APPEND_NUM_STAT(i, "decr_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].decr_hits);
-            APPEND_NUM_STAT(i, "cas_hits", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].cas_hits);
-            APPEND_NUM_STAT(i, "cas_badval", "%llu",
-                    (unsigned long long)thread_stats.slab_stats[i].cas_badval);
-
-            total++;
+            slabs_total++;
         }
+        if (settings.experimental_eviction) {
+            APPEND_NUM_STAT(i, "total_items", "%llu",
+                    (unsigned long long)item_count_per_bucket(i));
+            APPEND_NUM_STAT(i, "evicted_items", "%llu",
+                    (unsigned long long)item_evictions_per_bucket(i));
+        }
+        APPEND_NUM_STAT(i, "get_hits", "%llu",
+                (unsigned long long)thread_stats.slab_stats[i].get_hits);
+        APPEND_NUM_STAT(i, "cmd_set", "%llu",
+                (unsigned long long)thread_stats.slab_stats[i].set_cmds);
+        APPEND_NUM_STAT(i, "delete_hits", "%llu",
+                (unsigned long long)thread_stats.slab_stats[i].delete_hits);
+        APPEND_NUM_STAT(i, "incr_hits", "%llu",
+                (unsigned long long)thread_stats.slab_stats[i].incr_hits);
+        APPEND_NUM_STAT(i, "decr_hits", "%llu",
+                (unsigned long long)thread_stats.slab_stats[i].decr_hits);
+        APPEND_NUM_STAT(i, "cas_hits", "%llu",
+                (unsigned long long)thread_stats.slab_stats[i].cas_hits);
+        APPEND_NUM_STAT(i, "cas_badval", "%llu",
+                (unsigned long long)thread_stats.slab_stats[i].cas_badval);
     }
 
     /* add overall slab stats and append terminator */
-
-    APPEND_STAT("active_slabs", "%d", total);
+    APPEND_STAT("active_slabs", "%d", slabs_total);
     APPEND_STAT("total_malloced", "%llu", (unsigned long long)mem_malloced);
     add_stats(NULL, 0, NULL, 0, c);
 }
