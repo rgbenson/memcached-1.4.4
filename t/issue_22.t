@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 use strict;
-use Test::More tests => 84;
+use Test::More tests => 204;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
@@ -11,7 +11,7 @@ my $sock = $server->sock;
 my $value = "B"x66560;
 my $key = 0;
 
-for ($key = 0; $key < 40; $key++) {
+for ($key = 0; $key < 100; $key++) {
     print $sock "set key$key 0 0 66560\r\n$value\r\n";
     is (scalar <$sock>, "STORED\r\n", "stored key$key");
 }
@@ -26,26 +26,15 @@ print $sock "stats reset\r\n";
 is (scalar <$sock>, "RESET\r\n", "Stats reset");
 
 my $second_stats  = mem_stats($sock, "items");
+my $second_evicted = $second_stats->{"items:31:evicted"};
+is ($second_evicted, "0", "check evicted");
 
-if (testing_experimental_eviction) {
-    my $second_evicted = $second_stats->{"items:1:evicted"};
-    is ($second_evicted, "0", "check evicted");
-} else {
-    my $second_evicted = $second_stats->{"items:31:evicted"};
-    is ($second_evicted, "0", "check evicted");
-}
-
-for ($key = 40; $key < 80; $key++) {
+for ($key = 100; $key < 200; $key++) {
     print $sock "set key$key 0 0 66560\r\n$value\r\n";
     is (scalar <$sock>, "STORED\r\n", "stored key$key");
 }
 
 my $last_stats  = mem_stats($sock, "items");
 
-if (testing_experimental_eviction) {
-    my $last_evicted = $last_stats->{"items:1:evicted"};
-    is ($last_evicted, "33", "check evicted");
-} else {
-    my $last_evicted = $last_stats->{"items:31:evicted"};
-    is ($last_evicted, "40", "check evicted");
-}
+my $last_evicted = $last_stats->{"items:31:evicted"};
+is ($last_evicted, "100", "check evicted");

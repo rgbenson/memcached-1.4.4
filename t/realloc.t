@@ -35,12 +35,12 @@ my $stats_settings = mem_stats($sock, "settings");
 my $experimental_eviction_setting = $stats_settings->{"experimental_eviction"};
 is($experimental_eviction_setting, "on", "check experimental eviction enabled");
 my $stats  = mem_stats($sock, "items");
-my $evicted = $stats->{"items:1:evicted"};
+my $evicted = $stats->{"items:31:evicted"};
 isnt($evicted, "0", "check evicted");
-my $evicted_nonzero = $stats->{"items:1:evicted_nonzero"};
+my $evicted_nonzero = $stats->{"items:31:evicted_nonzero"};
 isnt($evicted_nonzero, "0", "check evicted_nonzero");
 
-my $first_item_count = $stats->{"items:1:number"};
+my $first_item_count = $stats->{"items:31:number"};
 isnt($first_item_count, "0", "check item count");
 
 # Insert more long values
@@ -50,7 +50,7 @@ for ($key = 100; $key < 150; $key++) {
 }
 
 my $stats = mem_stats($sock, "items");
-my $second_item_count = $stats->{"items:1:number"};
+my $second_item_count = $stats->{"items:31:number"};
 is($first_item_count, $second_item_count, "second item count is same as first");
 
 # Insert short values
@@ -62,7 +62,7 @@ for ($key = 150; $key < 250; $key++) {
 
 # Make sure we stored more of the items
 my $stats = mem_stats($sock, "items");
-my $third_item_count = $stats->{"items:1:number"};
+my $third_item_count = $stats->{"items:27:number"};
 cmp_ok($third_item_count, '>', $second_item_count,
        'with smaller values, more objects are stored');
 
@@ -74,6 +74,6 @@ for ($key = 100; $key < 150; $key++) {
        "STORED\r\n", "stored key$key - more values with ttl");
 }
 my $stats = mem_stats($sock, "items");
-my $fourth_item_count = $stats->{"items:1:number"};
+my $fourth_item_count = $stats->{"items:31:number"};
 is($fourth_item_count, $second_item_count,
    "with longer values, same objects are stored as with long values before");
